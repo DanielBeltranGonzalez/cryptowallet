@@ -84,9 +84,31 @@ export default function Home() {
     }
   }
 
-  const totalSol = Object.values(wallets)
-    .filter((w): w is Extract<WalletData, { status: "ok" }> => w.status === "ok")
-    .reduce((sum, w) => sum + w.sol, 0);
+  const okWallets = Object.values(wallets).filter(
+    (w): w is Extract<WalletData, { status: "ok" }> => w.status === "ok"
+  );
+
+  const totalSol = okWallets.reduce((sum, w) => sum + w.sol, 0);
+
+  const totalTokens = (() => {
+    const map = new Map<string, { mint: string; symbol: string; name: string; uiAmount: number; decimals: number }>();
+    for (const w of okWallets) {
+      for (const t of w.tokens) {
+        const existing = map.get(t.mint);
+        if (existing) {
+          existing.uiAmount += t.uiAmount;
+        } else {
+          map.set(t.mint, { ...t });
+        }
+      }
+    }
+    return [...map.values()].sort((a, b) => {
+      const aUnknown = a.name === "Token desconocido" ? 1 : 0;
+      const bUnknown = b.name === "Token desconocido" ? 1 : 0;
+      if (aUnknown !== bUnknown) return aUnknown - bUnknown;
+      return b.uiAmount - a.uiAmount;
+    });
+  })();
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-6">
@@ -222,12 +244,31 @@ export default function Home() {
         )}
 
         {/* Total */}
-        {Object.values(wallets).some((w) => w.status === "ok") && (
-          <div className="rounded-lg bg-zinc-800 border border-violet-700 px-6 py-4 text-center">
-            <p className="text-sm text-zinc-400 mb-1">Total SOL acumulado</p>
-            <p className="text-2xl font-bold text-violet-400">
-              {totalSol.toFixed(6)} SOL
-            </p>
+        {okWallets.length > 0 && (
+          <div className="rounded-lg bg-zinc-800 border border-violet-700 overflow-hidden">
+            <div className="px-6 py-4 text-center border-b border-violet-700/50">
+              <p className="text-sm text-zinc-400 mb-1">Total SOL acumulado</p>
+              <p className="text-2xl font-bold text-violet-400">
+                {totalSol.toFixed(6)} SOL
+              </p>
+            </div>
+            {totalTokens.length > 0 && (
+              <div className="divide-y divide-zinc-700/50">
+                {totalTokens.map((token) => (
+                  <div key={token.mint} className="flex items-center justify-between px-6 py-2">
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium text-zinc-200">{token.symbol}</span>
+                      <span className="text-xs text-zinc-500 ml-2">{token.name}</span>
+                    </div>
+                    <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
+                      {token.uiAmount.toLocaleString("es-ES", {
+                        maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
+                      })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
