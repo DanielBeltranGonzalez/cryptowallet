@@ -56,7 +56,7 @@ async function withBackoff<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
     } catch (e) {
       lastErr = e;
       if (i < attempts - 1) {
-        await new Promise((r) => setTimeout(r, 800 * 2 ** i)); // 800ms, 1.6s, 3.2s
+        await new Promise((r) => setTimeout(r, 2000 * 2 ** i)); // 2s, 4s, 8s
       }
     }
   }

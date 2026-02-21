@@ -1,14 +1,28 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import type { WalletData } from "./api/balances/route";
+
+const STORAGE_KEY = "solana-addresses";
 
 export default function Home() {
   const [input, setInput] = useState("");
-  const [addresses, setAddresses] = useState<string[]>([]);
+  const [addresses, setAddresses] = useState<string[]>(() => {
+    if (typeof window === "undefined") return [];
+    try {
+      return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+    } catch {
+      return [];
+    }
+  });
   const [wallets, setWallets] = useState<Record<string, WalletData>>({});
   const [loading, setLoading] = useState(false);
+  const [retrying, setRetrying] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(addresses));
+  }, [addresses]);
 
   function addAddress() {
     const trimmed = input.trim();
@@ -28,6 +42,24 @@ export default function Home() {
 
   function toggleExpanded(addr: string) {
     setExpanded((prev) => ({ ...prev, [addr]: !prev[addr] }));
+  }
+
+  async function retryTokens(addr: string) {
+    setRetrying((prev) => ({ ...prev, [addr]: true }));
+    try {
+      const res = await fetch("/api/balances", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ addresses: [addr] }),
+      });
+      const data: Record<string, WalletData> = await res.json();
+      setWallets((prev) => ({ ...prev, ...data }));
+      if (data[addr]?.status === "ok" && data[addr].tokens.length > 0) {
+        setExpanded((prev) => ({ ...prev, [addr]: true }));
+      }
+    } finally {
+      setRetrying((prev) => ({ ...prev, [addr]: false }));
+    }
   }
 
   async function fetchBalances() {
@@ -122,12 +154,14 @@ export default function Home() {
                               <span className="text-xs text-zinc-500">Sin tokens</span>
                             )}
                             {wallet.tokensError && (
-                              <span
-                                className="text-xs text-yellow-400 cursor-help"
+                              <button
+                                onClick={() => retryTokens(addr)}
+                                disabled={retrying[addr]}
+                                className="text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-50 transition-colors"
                                 title={wallet.tokensError}
                               >
-                                Error cargando tokens
-                              </span>
+                                {retrying[addr] ? "Reintentando…" : "Error tokens — reintentar"}
+                              </button>
                             )}
                           </>
                         )}
