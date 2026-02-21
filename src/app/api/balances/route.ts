@@ -15,14 +15,14 @@ export type WalletData =
   | { status: "error"; message: string }
   | { status: "ok"; sol: number; tokens: TokenBalance[]; tokensError?: string; cachedAt?: number };
 
-// ── Token list cache ──────────────────────────────────────────────────────────
-let tokenMetaCache: Map<string, { symbol: string; name: string }> | null = null;
-let tokenMetaCachedAt = 0;
-const TOKEN_META_TTL_MS = 60 * 60 * 1000; // 1 h
+// ── Token list cache (Solana Labs, ~13k known tokens) ────────────────────────
+let tokenListCache: Map<string, { symbol: string; name: string }> | null = null;
+let tokenListCachedAt = 0;
+const TOKEN_LIST_TTL_MS = 60 * 60 * 1000;
 
-async function getTokenMeta(): Promise<Map<string, { symbol: string; name: string }>> {
-  if (tokenMetaCache && Date.now() - tokenMetaCachedAt < TOKEN_META_TTL_MS) {
-    return tokenMetaCache;
+async function getTokenList(): Promise<Map<string, { symbol: string; name: string }>> {
+  if (tokenListCache && Date.now() - tokenListCachedAt < TOKEN_LIST_TTL_MS) {
+    return tokenListCache;
   }
   try {
     const res = await fetch(
@@ -31,22 +31,85 @@ async function getTokenMeta(): Promise<Map<string, { symbol: string; name: strin
     const data = await res.json() as {
       tokens: { chainId: number; address: string; symbol: string; name: string }[];
     };
-    tokenMetaCache = new Map(
+    tokenListCache = new Map(
       data.tokens
         .filter((t) => t.chainId === 101)
         .map((t) => [t.address, { symbol: t.symbol, name: t.name }])
     );
-    tokenMetaCachedAt = Date.now();
+    tokenListCachedAt = Date.now();
   } catch {
-    if (!tokenMetaCache) tokenMetaCache = new Map();
+    if (!tokenListCache) tokenListCache = new Map();
   }
-  return tokenMetaCache;
+  return tokenListCache;
 }
 
-// ── Wallet data cache ─────────────────────────────────────────────────────────
+// ── On-chain Metaplex metadata ───────────────────────────────────────────────
+const METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
+// Persistent per-mint cache (metadata is immutable in practice)
+const onChainMetaCache = new Map<string, { symbol: string; name: string } | null>();
+
+function deriveMetadataPda(mint: PublicKey): PublicKey {
+  return PublicKey.findProgramAddressSync(
+    [Buffer.from("metadata"), METADATA_PROGRAM_ID.toBytes(), mint.toBytes()],
+    METADATA_PROGRAM_ID
+  )[0];
+}
+
+function parseMetaplexAccount(data: Buffer): { name: string; symbol: string } | null {
+  // Layout: 1 (key) + 32 (update_auth) + 32 (mint) + 4+32 (name) + 4+10 (symbol)
+  if (data.length < 115 || data[0] !== 4) return null; // key 4 = MetadataV1
+  const name   = data.slice(69,  101).toString("utf8").replace(/\0+$/, "").trim();
+  const symbol = data.slice(105, 115).toString("utf8").replace(/\0+$/, "").trim();
+  if (!name && !symbol) return null;
+  return { name: name || "?", symbol: symbol || "?" };
+}
+
+async function fetchOnChainMeta(
+  mints: string[],
+  connection: Connection
+): Promise<Map<string, { symbol: string; name: string }>> {
+  const result = new Map<string, { symbol: string; name: string }>();
+  const uncached = mints.filter((m) => !onChainMetaCache.has(m));
+
+  if (uncached.length > 0) {
+    const pdas = uncached.map((mint) => ({
+      mint,
+      pda: deriveMetadataPda(new PublicKey(mint)),
+    }));
+
+    // Batch in groups of 100 (RPC limit)
+    for (let i = 0; i < pdas.length; i += 100) {
+      const batch = pdas.slice(i, i + 100);
+      try {
+        const accounts = await withBackoff(() =>
+          connection.getMultipleAccountsInfo(batch.map((p) => p.pda))
+        );
+        accounts.forEach((account, j) => {
+          const { mint } = batch[j];
+          if (account?.data) {
+            const parsed = parseMetaplexAccount(Buffer.from(account.data as Uint8Array));
+            onChainMetaCache.set(mint, parsed);
+          } else {
+            onChainMetaCache.set(mint, null);
+          }
+        });
+      } catch {
+        // On failure leave mints uncached; they'll retry next time
+      }
+    }
+  }
+
+  for (const mint of mints) {
+    const meta = onChainMetaCache.get(mint);
+    if (meta) result.set(mint, meta);
+  }
+  return result;
+}
+
+// ── Wallet data cache ────────────────────────────────────────────────────────
 type CacheEntry = { data: Extract<WalletData, { status: "ok" }>; cachedAt: number };
 const walletCache = new Map<string, CacheEntry>();
-const WALLET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
+const WALLET_CACHE_TTL_MS = 5 * 60 * 1000;
 
 function getCached(addr: string): Extract<WalletData, { status: "ok" }> | null {
   const entry = walletCache.get(addr);
@@ -62,7 +125,7 @@ function setCached(addr: string, data: Extract<WalletData, { status: "ok" }>) {
   return { ...data, cachedAt };
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function getRpcUrl(): string {
   return process.env.SOLANA_RPC_URL ?? clusterApiUrl("mainnet-beta");
 }
@@ -75,7 +138,7 @@ async function withBackoff<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
     } catch (e) {
       lastErr = e;
       if (i < attempts - 1) {
-        await new Promise((r) => setTimeout(r, 2000 * 2 ** i)); // 2s, 4s, 8s
+        await new Promise((r) => setTimeout(r, 2000 * 2 ** i));
       }
     }
   }
@@ -99,20 +162,17 @@ export async function POST(req: NextRequest) {
     disableRetryOnRateLimit: true,
   });
 
-  const tokenMeta = await getTokenMeta();
+  const tokenList = await getTokenList();
   const results: Record<string, WalletData> = {};
 
   for (const addr of addresses) {
-    // 1. Return cached data if still fresh (unless forced refresh)
+    // Return cache if fresh
     if (!force) {
       const cached = getCached(addr);
-      if (cached) {
-        results[addr] = cached;
-        continue;
-      }
+      if (cached) { results[addr] = cached; continue; }
     }
 
-    // 2. Validate address
+    // Validate address
     let pubkey: PublicKey;
     try {
       pubkey = new PublicKey(addr);
@@ -122,7 +182,7 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // 3. Fetch SOL balance
+    // Fetch SOL balance
     let lamports: number;
     try {
       lamports = await withBackoff(() => connection.getBalance(pubkey));
@@ -133,41 +193,61 @@ export async function POST(req: NextRequest) {
 
     await sleep(300);
 
-    // 4. Fetch token accounts
+    // Fetch token accounts
     let tokens: TokenBalance[] = [];
     let tokensError: string | undefined;
     try {
-      const legacyAccounts = await withBackoff(() =>
-        connection.getParsedTokenAccountsByOwner(pubkey, { programId: TOKEN_PROGRAM_ID })
-      );
+      const [legacyAccounts, token2022Accounts] = await Promise.all([
+        withBackoff(() =>
+          connection.getParsedTokenAccountsByOwner(pubkey, { programId: TOKEN_PROGRAM_ID })
+        ),
+        withBackoff(() =>
+          connection.getParsedTokenAccountsByOwner(pubkey, { programId: TOKEN_2022_PROGRAM_ID })
+        ),
+      ]);
 
-      await sleep(200);
-
-      const token2022Accounts = await withBackoff(() =>
-        connection.getParsedTokenAccountsByOwner(pubkey, { programId: TOKEN_2022_PROGRAM_ID })
-      );
-
-      tokens = [...legacyAccounts.value, ...token2022Accounts.value]
+      const rawTokens = [...legacyAccounts.value, ...token2022Accounts.value]
         .map((account) => {
           const info = account.account.data.parsed.info;
-          const mint = info.mint as string;
-          const meta = tokenMeta.get(mint);
           return {
-            mint,
-            symbol: meta?.symbol ?? mint.slice(0, 4) + "…",
-            name: meta?.name ?? "Token desconocido",
+            mint: info.mint as string,
             uiAmount: (info.tokenAmount.uiAmount as number) ?? 0,
             decimals: info.tokenAmount.decimals as number,
           };
         })
-        .filter((t) => t.uiAmount > 0)
-        .sort((a, b) => b.uiAmount - a.uiAmount);
+        .filter((t) => t.uiAmount > 0);
+
+      // Resolve names: token list first, then on-chain Metaplex for unknowns
+      const unknownMints = rawTokens
+        .map((t) => t.mint)
+        .filter((m) => !tokenList.has(m));
+
+      const onChainMeta = unknownMints.length > 0
+        ? await fetchOnChainMeta(unknownMints, connection)
+        : new Map<string, { symbol: string; name: string }>();
+
+      tokens = rawTokens
+        .map((t) => {
+          const meta = tokenList.get(t.mint) ?? onChainMeta.get(t.mint);
+          return {
+            mint: t.mint,
+            symbol: meta?.symbol ?? t.mint.slice(0, 4) + "…",
+            name: meta?.name ?? "Token desconocido",
+            uiAmount: t.uiAmount,
+            decimals: t.decimals,
+          };
+        })
+        .sort((a, b) => {
+          const aUnknown = a.name === "Token desconocido" ? 1 : 0;
+          const bUnknown = b.name === "Token desconocido" ? 1 : 0;
+          if (aUnknown !== bUnknown) return aUnknown - bUnknown;
+          return b.uiAmount - a.uiAmount;
+        });
     } catch (e) {
       tokensError = (e as Error).message;
       console.error(`[balances] token fetch failed for ${addr}:`, tokensError);
     }
 
-    // Only cache successful full fetches (not partial token errors)
     const walletData: Extract<WalletData, { status: "ok" }> = {
       status: "ok",
       sol: lamports / 1e9,
