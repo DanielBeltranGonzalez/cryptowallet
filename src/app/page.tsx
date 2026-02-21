@@ -76,11 +76,6 @@ export default function Home() {
       });
       const data: Record<string, WalletData> = await res.json();
       setWallets(data);
-      const newExpanded: Record<string, boolean> = {};
-      for (const [addr, wallet] of Object.entries(data)) {
-        if (wallet.status === "ok" && wallet.tokens.length > 0) newExpanded[addr] = true;
-      }
-      setExpanded(newExpanded);
     } finally {
       setLoading(false);
     }
@@ -151,119 +146,11 @@ export default function Home() {
           </div>
         )}
 
-        {/* Address list */}
-        {addresses.length > 0 && (
-          <div className="space-y-3">
-            {addresses.map((addr) => {
-              const wallet = wallets[addr];
-              const isOpen = expanded[addr] ?? false;
-              return (
-                <div
-                  key={addr}
-                  className="rounded-lg bg-zinc-800 border border-zinc-700 overflow-hidden"
-                >
-                  {/* Header row */}
-                  <div className="flex items-center justify-between px-4 py-3">
-                    <div className="flex-1 min-w-0 mr-4">
-                      <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
-                      {wallet?.status === "ok" && wallet.cachedAt && (
-                        <p className="text-xs text-zinc-600 mt-0.5">
-                          actualizado {Math.round((Date.now() - wallet.cachedAt) / 60000)} min atrás
-                        </p>
-                      )}
-                      <div className="flex items-center gap-3 mt-1">
-                        {wallet === undefined ? (
-                          <span className="text-zinc-500 text-sm">—</span>
-                        ) : wallet.status === "invalid" ? (
-                          <span className="text-red-400 text-sm">Dirección inválida</span>
-                        ) : wallet.status === "error" ? (
-                          <span className="text-yellow-400 text-sm" title={wallet.message}>
-                            Error de red — intenta de nuevo
-                          </span>
-                        ) : (
-                          <>
-                            <span className="text-green-400 font-semibold text-sm">
-                              {wallet.sol.toFixed(6)} SOL
-                            </span>
-                            {wallet.tokens.length > 0 && (
-                              <button
-                                onClick={() => toggleExpanded(addr)}
-                                className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
-                              >
-                                {wallet.tokens.length} token{wallet.tokens.length !== 1 ? "s" : ""}
-                                {isOpen ? " ▲" : " ▼"}
-                              </button>
-                            )}
-                            {wallet.tokens.length === 0 && !wallet.tokensError && (
-                              <span className="text-xs text-zinc-500">Sin tokens</span>
-                            )}
-                            {wallet.tokensError && (
-                              <button
-                                onClick={() => retryTokens(addr)}
-                                disabled={retrying[addr]}
-                                className="text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-50 transition-colors"
-                                title={wallet.tokensError}
-                              >
-                                {retrying[addr] ? "Reintentando…" : "Error tokens — reintentar"}
-                              </button>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => removeAddress(addr)}
-                      className="text-zinc-500 hover:text-red-400 transition-colors text-sm"
-                    >
-                      Eliminar
-                    </button>
-                  </div>
-
-                  {/* Token list */}
-                  {isOpen && wallet?.status === "ok" && wallet.tokens.length > 0 && (
-                    <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
-                      {wallet.tokens.map((token) => (
-                        <div
-                          key={token.mint}
-                          className="flex items-center justify-between px-4 py-2"
-                        >
-                          <div className="min-w-0">
-                            <span className="text-sm font-medium text-zinc-200">
-                              {token.symbol}
-                            </span>
-                            <span className="text-xs text-zinc-500 ml-2">{token.name}</span>
-                          </div>
-                          <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
-                            {token.uiAmount.toLocaleString("es-ES", {
-                              maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
-                            })}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Actions */}
-        {addresses.length > 0 && (
-          <button
-            onClick={fetchBalances}
-            disabled={loading}
-            className="w-full rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? "Consultando…" : "Actualizar saldos"}
-          </button>
-        )}
-
-        {/* Total */}
+        {/* Total acumulado — primero */}
         {okWallets.length > 0 && (
           <div className="rounded-lg bg-zinc-800 border border-violet-700 overflow-hidden">
             <div className="px-6 py-4 text-center border-b border-violet-700/50">
-              <p className="text-sm text-zinc-400 mb-1">Total SOL acumulado</p>
+              <p className="text-sm text-zinc-400 mb-1">Total acumulado</p>
               <p className="text-2xl font-bold text-violet-400">
                 {totalSol.toFixed(6)} SOL
               </p>
@@ -285,6 +172,138 @@ export default function Home() {
                 ))}
               </div>
             )}
+          </div>
+        )}
+
+        {/* Actualizar */}
+        {addresses.length > 0 && (
+          <button
+            onClick={fetchBalances}
+            disabled={loading}
+            className="w-full rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? "Consultando…" : "Actualizar saldos"}
+          </button>
+        )}
+
+        {/* Direcciones — tarjetas colapsadas */}
+        {addresses.length > 0 && (
+          <div className="space-y-2">
+            {addresses.map((addr) => {
+              const wallet = wallets[addr];
+              const isOpen = expanded[addr] ?? false;
+              return (
+                <div
+                  key={addr}
+                  className="rounded-lg bg-zinc-800 border border-zinc-700 overflow-hidden"
+                >
+                  {/* Cabecera clicable para colapsar/expandir */}
+                  <button
+                    onClick={() => toggleExpanded(addr)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-700/40 transition-colors"
+                  >
+                    <div className="flex-1 min-w-0 mr-3">
+                      <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {wallet === undefined && (
+                          <span className="text-xs text-zinc-600">Sin consultar</span>
+                        )}
+                        {wallet?.status === "invalid" && (
+                          <span className="text-xs text-red-400">Dirección inválida</span>
+                        )}
+                        {wallet?.status === "error" && (
+                          <span className="text-xs text-yellow-400">Error de red</span>
+                        )}
+                        {wallet?.status === "ok" && (
+                          <>
+                            <span className="text-xs text-green-400">{wallet.sol.toFixed(4)} SOL</span>
+                            {wallet.tokensError && (
+                              <span className="text-xs text-yellow-400">· Error tokens</span>
+                            )}
+                            {!wallet.tokensError && wallet.tokens.length > 0 && (
+                              <span className="text-xs text-zinc-500">· {wallet.tokens.length} tokens</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-zinc-500 text-xs">{isOpen ? "▲" : "▼"}</span>
+                  </button>
+
+                  {/* Contenido expandido */}
+                  {isOpen && (
+                    <div className="border-t border-zinc-700">
+                      {/* Balance + acciones */}
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          {wallet === undefined ? (
+                            <span className="text-zinc-500 text-sm">—</span>
+                          ) : wallet.status === "invalid" ? (
+                            <span className="text-red-400 text-sm">Dirección inválida</span>
+                          ) : wallet.status === "error" ? (
+                            <span className="text-yellow-400 text-sm" title={wallet.message}>
+                              Error de red — intenta de nuevo
+                            </span>
+                          ) : (
+                            <>
+                              <span className="text-green-400 font-semibold text-sm">
+                                {wallet.sol.toFixed(6)} SOL
+                              </span>
+                              {wallet.tokens.length > 0 && (
+                                <span className="text-xs text-violet-400">
+                                  {wallet.tokens.length} token{wallet.tokens.length !== 1 ? "s" : ""}
+                                </span>
+                              )}
+                              {wallet.tokens.length === 0 && !wallet.tokensError && (
+                                <span className="text-xs text-zinc-500">Sin tokens</span>
+                              )}
+                              {wallet.tokensError && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); retryTokens(addr); }}
+                                  disabled={retrying[addr]}
+                                  className="text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-50 transition-colors"
+                                  title={wallet.tokensError}
+                                >
+                                  {retrying[addr] ? "Reintentando…" : "Error tokens — reintentar"}
+                                </button>
+                              )}
+                            </>
+                          )}
+                        </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeAddress(addr); }}
+                          className="text-zinc-500 hover:text-red-400 transition-colors text-sm"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+
+                      {/* Lista de tokens */}
+                      {wallet?.status === "ok" && wallet.tokens.length > 0 && (
+                        <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
+                          {wallet.tokens.map((token) => (
+                            <div
+                              key={token.mint}
+                              className="flex items-center justify-between px-4 py-2"
+                            >
+                              <div className="min-w-0">
+                                <span className="text-sm font-medium text-zinc-200">{token.symbol}</span>
+                                <span className="text-xs text-zinc-500 ml-2">{token.name}</span>
+                              </div>
+                              <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
+                                {token.uiAmount.toLocaleString("es-ES", {
+                                  maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
+                                })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 

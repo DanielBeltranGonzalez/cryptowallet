@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
-import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
+import { AccountLayout, MintLayout, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 
 export type TokenBalance = {
   mint: string;
@@ -193,50 +193,65 @@ export async function POST(req: NextRequest) {
 
     await sleep(300);
 
-    // Fetch token accounts
+    // Fetch token accounts (raw encoding — cheaper RPC call than parsed variant)
     let tokens: TokenBalance[] = [];
     let tokensError: string | undefined;
     try {
-      const [legacyAccounts, token2022Accounts] = await Promise.all([
-        withBackoff(() =>
-          connection.getParsedTokenAccountsByOwner(pubkey, { programId: TOKEN_PROGRAM_ID })
-        ),
-        withBackoff(() =>
-          connection.getParsedTokenAccountsByOwner(pubkey, { programId: TOKEN_2022_PROGRAM_ID })
-        ),
-      ]);
+      const legacyRaw = await withBackoff(() =>
+        connection.getTokenAccountsByOwner(pubkey, { programId: TOKEN_PROGRAM_ID })
+      );
+      await sleep(200);
+      const token2022Raw = await withBackoff(() =>
+        connection.getTokenAccountsByOwner(pubkey, { programId: TOKEN_2022_PROGRAM_ID })
+      );
 
-      const rawTokens = [...legacyAccounts.value, ...token2022Accounts.value]
-        .map((account) => {
-          const info = account.account.data.parsed.info;
-          return {
-            mint: info.mint as string,
-            uiAmount: (info.tokenAmount.uiAmount as number) ?? 0,
-            decimals: info.tokenAmount.decimals as number,
-          };
-        })
-        .filter((t) => t.uiAmount > 0);
+      // Decode raw SPL token account layout
+      const decoded = [...legacyRaw.value, ...token2022Raw.value].flatMap(({ account }) => {
+        try {
+          const d = AccountLayout.decode(Buffer.from(account.data));
+          return [{ mint: new PublicKey(d.mint).toBase58(), amount: d.amount, state: d.state }];
+        } catch { return []; }
+      }).filter((t) => t.state === 1 && Number(t.amount.toString()) > 0);
 
-      // Resolve names: token list first, then on-chain Metaplex for unknowns
-      const unknownMints = rawTokens
-        .map((t) => t.mint)
-        .filter((m) => !tokenList.has(m));
+      // Batch-fetch mint decimals in one call
+      const uniqueMints = [...new Set(decoded.map((t) => t.mint))];
+      const mintDecimalsMap = new Map<string, number>();
+      if (uniqueMints.length > 0) {
+        await sleep(200);
+        try {
+          const mintInfos = await withBackoff(() =>
+            connection.getMultipleAccountsInfo(uniqueMints.map((m) => new PublicKey(m)))
+          );
+          uniqueMints.forEach((mint, i) => {
+            const data = mintInfos[i]?.data;
+            if (data) {
+              try { mintDecimalsMap.set(mint, MintLayout.decode(Buffer.from(data)).decimals); }
+              catch { /* skip */ }
+            }
+          });
+        } catch { /* decimals default to 0 */ }
+      }
 
+      // Resolve token metadata
+      const unknownMints = uniqueMints.filter((m) => !tokenList.has(m));
       const onChainMeta = unknownMints.length > 0
         ? await fetchOnChainMeta(unknownMints, connection)
         : new Map<string, { symbol: string; name: string }>();
 
-      tokens = rawTokens
+      tokens = decoded
         .map((t) => {
+          const decimals = mintDecimalsMap.get(t.mint) ?? 0;
+          const uiAmount = Number(t.amount.toString()) / Math.pow(10, decimals);
           const meta = tokenList.get(t.mint) ?? onChainMeta.get(t.mint);
           return {
             mint: t.mint,
             symbol: meta?.symbol ?? t.mint.slice(0, 4) + "…",
             name: meta?.name ?? "Token desconocido",
-            uiAmount: t.uiAmount,
-            decimals: t.decimals,
+            uiAmount,
+            decimals,
           };
         })
+        .filter((t) => t.uiAmount > 0)
         .sort((a, b) => {
           const aUnknown = a.name === "Token desconocido" ? 1 : 0;
           const bUnknown = b.name === "Token desconocido" ? 1 : 0;
