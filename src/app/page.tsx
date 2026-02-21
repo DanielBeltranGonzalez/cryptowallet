@@ -17,8 +17,13 @@ export default function Home() {
   // Load persisted addresses after hydration (avoids SSR mismatch)
   useEffect(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-      if (stored.length > 0) setAddresses(stored);
+      const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+      if (
+        Array.isArray(parsed) &&
+        parsed.every((v: unknown) => typeof v === "string" && v.length > 0 && v.length <= 100)
+      ) {
+        if (parsed.length > 0) setAddresses(parsed);
+      }
     } catch { /* ignore */ }
   }, []);
 
@@ -28,7 +33,7 @@ export default function Home() {
 
   function addAddress() {
     const trimmed = input.trim();
-    if (!trimmed || addresses.includes(trimmed)) return;
+    if (!trimmed || trimmed.length > 100 || addresses.includes(trimmed)) return;
     setAddresses((prev) => [...prev, trimmed]);
     setInput("");
     setShowInput(false);
@@ -134,6 +139,7 @@ export default function Home() {
                 if (e.key === "Escape") { setShowInput(false); setInput(""); }
               }}
               placeholder="Dirección de Solana..."
+              maxLength={100}
               autoFocus
               className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
             />
@@ -160,8 +166,8 @@ export default function Home() {
                 {totalTokens.map((token) => (
                   <div key={token.mint} className="flex items-center justify-between px-6 py-2">
                     <div className="min-w-0">
-                      <span className="text-sm font-medium text-zinc-200">{token.symbol}</span>
-                      <span className="text-xs text-zinc-500 ml-2">{token.name}</span>
+                      <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
+                      <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
                     </div>
                     <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
                       {token.uiAmount.toLocaleString("es-ES", {
@@ -287,8 +293,8 @@ export default function Home() {
                               className="flex items-center justify-between px-4 py-2"
                             >
                               <div className="min-w-0">
-                                <span className="text-sm font-medium text-zinc-200">{token.symbol}</span>
-                                <span className="text-xs text-zinc-500 ml-2">{token.name}</span>
+                                <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
+                                <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
                               </div>
                               <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
                                 {token.uiAmount.toLocaleString("es-ES", {
