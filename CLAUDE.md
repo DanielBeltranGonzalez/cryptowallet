@@ -2,6 +2,9 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+🚨 **Ejecuta `npm test` antes de cada commit** - Sin excepciones.
+🚨 **TODOS LOS TESTS DEBEN PASAR** - No marques tareas como completas si fallan.
+
 ## Commands
 
 ```bash
