@@ -51,7 +51,7 @@ export default function Home() {
       const res = await fetch("/api/balances", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ addresses: [addr] }),
+        body: JSON.stringify({ addresses: [addr], force: true }),
       });
       const data: Record<string, WalletData> = await res.json();
       setWallets((prev) => ({ ...prev, ...data }));
@@ -70,7 +70,7 @@ export default function Home() {
       const res = await fetch("/api/balances", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ addresses }),
+        body: JSON.stringify({ addresses, force: true }),
       });
       const data: Record<string, WalletData> = await res.json();
       setWallets(data);
@@ -128,6 +128,11 @@ export default function Home() {
                   <div className="flex items-center justify-between px-4 py-3">
                     <div className="flex-1 min-w-0 mr-4">
                       <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
+                      {wallet?.status === "ok" && wallet.cachedAt && (
+                        <p className="text-xs text-zinc-600 mt-0.5">
+                          actualizado {Math.round((Date.now() - wallet.cachedAt) / 60000)} min atrás
+                        </p>
+                      )}
                       <div className="flex items-center gap-3 mt-1">
                         {wallet === undefined ? (
                           <span className="text-zinc-500 text-sm">—</span>

@@ -13,12 +13,12 @@ export type TokenBalance = {
 export type WalletData =
   | { status: "invalid" }
   | { status: "error"; message: string }
-  | { status: "ok"; sol: number; tokens: TokenBalance[]; tokensError?: string };
+  | { status: "ok"; sol: number; tokens: TokenBalance[]; tokensError?: string; cachedAt?: number };
 
-// ── In-memory token list cache (avoids re-fetching the 8 MB file each request) ──
+// ── Token list cache ──────────────────────────────────────────────────────────
 let tokenMetaCache: Map<string, { symbol: string; name: string }> | null = null;
 let tokenMetaCachedAt = 0;
-const TOKEN_META_TTL_MS = 60 * 60 * 1000;
+const TOKEN_META_TTL_MS = 60 * 60 * 1000; // 1 h
 
 async function getTokenMeta(): Promise<Map<string, { symbol: string; name: string }>> {
   if (tokenMetaCache && Date.now() - tokenMetaCachedAt < TOKEN_META_TTL_MS) {
@@ -43,11 +43,30 @@ async function getTokenMeta(): Promise<Map<string, { symbol: string; name: strin
   return tokenMetaCache;
 }
 
+// ── Wallet data cache ─────────────────────────────────────────────────────────
+type CacheEntry = { data: Extract<WalletData, { status: "ok" }>; cachedAt: number };
+const walletCache = new Map<string, CacheEntry>();
+const WALLET_CACHE_TTL_MS = 5 * 60 * 1000; // 5 min
+
+function getCached(addr: string): Extract<WalletData, { status: "ok" }> | null {
+  const entry = walletCache.get(addr);
+  if (entry && Date.now() - entry.cachedAt < WALLET_CACHE_TTL_MS) {
+    return { ...entry.data, cachedAt: entry.cachedAt };
+  }
+  return null;
+}
+
+function setCached(addr: string, data: Extract<WalletData, { status: "ok" }>) {
+  const cachedAt = Date.now();
+  walletCache.set(addr, { data, cachedAt });
+  return { ...data, cachedAt };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function getRpcUrl(): string {
   return process.env.SOLANA_RPC_URL ?? clusterApiUrl("mainnet-beta");
 }
 
-/** Retry up to `attempts` times with exponential backoff. */
 async function withBackoff<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
@@ -67,14 +86,14 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// ── Route handler ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const { addresses } = await req.json();
+  const { addresses, force = false } = await req.json();
 
   if (!Array.isArray(addresses)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
 
-  // disableRetryOnRateLimit: let us control retries ourselves
   const connection = new Connection(getRpcUrl(), {
     commitment: "confirmed",
     disableRetryOnRateLimit: true,
@@ -83,9 +102,17 @@ export async function POST(req: NextRequest) {
   const tokenMeta = await getTokenMeta();
   const results: Record<string, WalletData> = {};
 
-  // Process addresses sequentially to avoid flooding the RPC
   for (const addr of addresses) {
-    // 1. Validate address format
+    // 1. Return cached data if still fresh (unless forced refresh)
+    if (!force) {
+      const cached = getCached(addr);
+      if (cached) {
+        results[addr] = cached;
+        continue;
+      }
+    }
+
+    // 2. Validate address
     let pubkey: PublicKey;
     try {
       pubkey = new PublicKey(addr);
@@ -95,7 +122,7 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // 2. Fetch SOL balance (with backoff)
+    // 3. Fetch SOL balance
     let lamports: number;
     try {
       lamports = await withBackoff(() => connection.getBalance(pubkey));
@@ -104,10 +131,9 @@ export async function POST(req: NextRequest) {
       continue;
     }
 
-    // Small pause between getBalance and token account calls
     await sleep(300);
 
-    // 3. Fetch token accounts (sequential, with backoff)
+    // 4. Fetch token accounts
     let tokens: TokenBalance[] = [];
     let tokensError: string | undefined;
     try {
@@ -141,9 +167,15 @@ export async function POST(req: NextRequest) {
       console.error(`[balances] token fetch failed for ${addr}:`, tokensError);
     }
 
-    results[addr] = { status: "ok", sol: lamports / 1e9, tokens, tokensError };
+    // Only cache successful full fetches (not partial token errors)
+    const walletData: Extract<WalletData, { status: "ok" }> = {
+      status: "ok",
+      sol: lamports / 1e9,
+      tokens,
+      tokensError,
+    };
+    results[addr] = tokensError ? walletData : setCached(addr, walletData);
 
-    // Pause between addresses
     if (addresses.indexOf(addr) < addresses.length - 1) await sleep(400);
   }
 
