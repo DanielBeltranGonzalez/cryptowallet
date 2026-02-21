@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import type { WalletData } from "./api/balances/route";
 
 export default function Home() {
   const [input, setInput] = useState("");
   const [addresses, setAddresses] = useState<string[]>([]);
-  const [balances, setBalances] = useState<Record<string, number | null>>({});
+  const [wallets, setWallets] = useState<Record<string, WalletData>>({});
   const [loading, setLoading] = useState(false);
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
 
   function addAddress() {
     const trimmed = input.trim();
@@ -17,11 +19,15 @@ export default function Home() {
 
   function removeAddress(addr: string) {
     setAddresses((prev) => prev.filter((a) => a !== addr));
-    setBalances((prev) => {
+    setWallets((prev) => {
       const next = { ...prev };
       delete next[addr];
       return next;
     });
+  }
+
+  function toggleExpanded(addr: string) {
+    setExpanded((prev) => ({ ...prev, [addr]: !prev[addr] }));
   }
 
   async function fetchBalances() {
@@ -33,16 +39,21 @@ export default function Home() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ addresses }),
       });
-      const data = await res.json();
-      setBalances(data);
+      const data: Record<string, WalletData> = await res.json();
+      setWallets(data);
+      const newExpanded: Record<string, boolean> = {};
+      for (const [addr, wallet] of Object.entries(data)) {
+        if (wallet.status === "ok" && wallet.tokens.length > 0) newExpanded[addr] = true;
+      }
+      setExpanded(newExpanded);
     } finally {
       setLoading(false);
     }
   }
 
-  const total = Object.values(balances)
-    .filter((b): b is number => b !== null)
-    .reduce((sum, b) => sum + b, 0);
+  const totalSol = Object.values(wallets)
+    .filter((w): w is Extract<WalletData, { status: "ok" }> => w.status === "ok")
+    .reduce((sum, w) => sum + w.sol, 0);
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-6">
@@ -71,34 +82,91 @@ export default function Home() {
 
         {/* Address list */}
         {addresses.length > 0 && (
-          <div className="space-y-2">
-            {addresses.map((addr) => (
-              <div
-                key={addr}
-                className="flex items-center justify-between rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-3"
-              >
-                <div className="flex-1 min-w-0 mr-4">
-                  <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
-                  <p className="text-sm mt-1">
-                    {balances[addr] === undefined ? (
-                      <span className="text-zinc-500">—</span>
-                    ) : balances[addr] === null ? (
-                      <span className="text-red-400">Dirección inválida</span>
-                    ) : (
-                      <span className="text-green-400 font-semibold">
-                        {balances[addr]!.toFixed(6)} SOL
-                      </span>
-                    )}
-                  </p>
-                </div>
-                <button
-                  onClick={() => removeAddress(addr)}
-                  className="text-zinc-500 hover:text-red-400 transition-colors text-sm"
+          <div className="space-y-3">
+            {addresses.map((addr) => {
+              const wallet = wallets[addr];
+              const isOpen = expanded[addr] ?? false;
+              return (
+                <div
+                  key={addr}
+                  className="rounded-lg bg-zinc-800 border border-zinc-700 overflow-hidden"
                 >
-                  Eliminar
-                </button>
-              </div>
-            ))}
+                  {/* Header row */}
+                  <div className="flex items-center justify-between px-4 py-3">
+                    <div className="flex-1 min-w-0 mr-4">
+                      <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
+                      <div className="flex items-center gap-3 mt-1">
+                        {wallet === undefined ? (
+                          <span className="text-zinc-500 text-sm">—</span>
+                        ) : wallet.status === "invalid" ? (
+                          <span className="text-red-400 text-sm">Dirección inválida</span>
+                        ) : wallet.status === "error" ? (
+                          <span className="text-yellow-400 text-sm" title={wallet.message}>
+                            Error de red — intenta de nuevo
+                          </span>
+                        ) : (
+                          <>
+                            <span className="text-green-400 font-semibold text-sm">
+                              {wallet.sol.toFixed(6)} SOL
+                            </span>
+                            {wallet.tokens.length > 0 && (
+                              <button
+                                onClick={() => toggleExpanded(addr)}
+                                className="text-xs text-violet-400 hover:text-violet-300 transition-colors"
+                              >
+                                {wallet.tokens.length} token{wallet.tokens.length !== 1 ? "s" : ""}
+                                {isOpen ? " ▲" : " ▼"}
+                              </button>
+                            )}
+                            {wallet.tokens.length === 0 && !wallet.tokensError && (
+                              <span className="text-xs text-zinc-500">Sin tokens</span>
+                            )}
+                            {wallet.tokensError && (
+                              <span
+                                className="text-xs text-yellow-400 cursor-help"
+                                title={wallet.tokensError}
+                              >
+                                Error cargando tokens
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => removeAddress(addr)}
+                      className="text-zinc-500 hover:text-red-400 transition-colors text-sm"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+
+                  {/* Token list */}
+                  {isOpen && wallet?.status === "ok" && wallet.tokens.length > 0 && (
+                    <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
+                      {wallet.tokens.map((token) => (
+                        <div
+                          key={token.mint}
+                          className="flex items-center justify-between px-4 py-2"
+                        >
+                          <div className="min-w-0">
+                            <span className="text-sm font-medium text-zinc-200">
+                              {token.symbol}
+                            </span>
+                            <span className="text-xs text-zinc-500 ml-2">{token.name}</span>
+                          </div>
+                          <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
+                            {token.uiAmount.toLocaleString("es-ES", {
+                              maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
+                            })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
@@ -109,16 +177,16 @@ export default function Home() {
             disabled={loading}
             className="w-full rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "Consultando..." : "Actualizar saldos"}
+            {loading ? "Consultando…" : "Actualizar saldos"}
           </button>
         )}
 
         {/* Total */}
-        {Object.keys(balances).length > 0 && (
+        {Object.values(wallets).some((w) => w.status === "ok") && (
           <div className="rounded-lg bg-zinc-800 border border-violet-700 px-6 py-4 text-center">
-            <p className="text-sm text-zinc-400 mb-1">Total acumulado</p>
+            <p className="text-sm text-zinc-400 mb-1">Total SOL acumulado</p>
             <p className="text-2xl font-bold text-violet-400">
-              {total.toFixed(6)} SOL
+              {totalSol.toFixed(6)} SOL
             </p>
           </div>
         )}
