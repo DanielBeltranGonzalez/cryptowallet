@@ -7,18 +7,19 @@ const STORAGE_KEY = "solana-addresses";
 
 export default function Home() {
   const [input, setInput] = useState("");
-  const [addresses, setAddresses] = useState<string[]>(() => {
-    if (typeof window === "undefined") return [];
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
-    } catch {
-      return [];
-    }
-  });
+  const [addresses, setAddresses] = useState<string[]>([]);
   const [wallets, setWallets] = useState<Record<string, WalletData>>({});
   const [loading, setLoading] = useState(false);
   const [retrying, setRetrying] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+
+  // Load persisted addresses after hydration (avoids SSR mismatch)
+  useEffect(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "[]");
+      if (stored.length > 0) setAddresses(stored);
+    } catch { /* ignore */ }
+  }, []);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(addresses));
