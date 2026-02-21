@@ -13,7 +13,7 @@ npm run build    # Production build
 npm run lint     # Run ESLint
 ```
 
-No test framework is configured yet.
+Tests use **Jest** + **@testing-library/react**. Files in `src/__tests__/` or matching `*.test.{ts,tsx}`.
 
 ## Architecture
 
