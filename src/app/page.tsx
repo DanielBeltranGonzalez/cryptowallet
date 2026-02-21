@@ -12,6 +12,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [retrying, setRetrying] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [showInput, setShowInput] = useState(false);
 
   // Load persisted addresses after hydration (avoids SSR mismatch)
   useEffect(() => {
@@ -30,6 +31,7 @@ export default function Home() {
     if (!trimmed || addresses.includes(trimmed)) return;
     setAddresses((prev) => [...prev, trimmed]);
     setInput("");
+    setShowInput(false);
   }
 
   function removeAddress(addr: string) {
@@ -113,27 +115,41 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-6">
       <div className="w-full max-w-2xl space-y-6">
-        <h1 className="text-3xl font-bold text-center text-white">
-          Solana Wallet Balance Viewer
-        </h1>
-
-        {/* Input */}
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && addAddress()}
-            placeholder="Dirección de Solana..."
-            className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
-          />
+        <div className="flex items-center justify-between">
+          <h1 className="text-3xl font-bold text-white">
+            Solana Wallet Balance Viewer
+          </h1>
           <button
-            onClick={addAddress}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors"
+            onClick={() => { setShowInput((v) => !v); setInput(""); }}
+            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors shrink-0"
           >
-            Añadir
+            {showInput ? "Cancelar" : "Añadir"}
           </button>
         </div>
+
+        {/* Input (visible only when showInput) */}
+        {showInput && (
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") addAddress();
+                if (e.key === "Escape") { setShowInput(false); setInput(""); }
+              }}
+              placeholder="Dirección de Solana..."
+              autoFocus
+              className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+            />
+            <button
+              onClick={addAddress}
+              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors"
+            >
+              Confirmar
+            </button>
+          </div>
+        )}
 
         {/* Address list */}
         {addresses.length > 0 && (
@@ -272,7 +288,7 @@ export default function Home() {
           </div>
         )}
 
-        {addresses.length === 0 && (
+        {addresses.length === 0 && !showInput && (
           <p className="text-center text-zinc-500 text-sm">
             Añade una dirección de Solana para empezar.
           </p>
