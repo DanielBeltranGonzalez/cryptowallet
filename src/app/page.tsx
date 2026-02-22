@@ -97,13 +97,15 @@ export default function Home() {
     for (const w of okWallets) {
       for (const t of w.tokens) {
         if (t.stakingDetails) {
-          // Aggregate staked D2X under a single synthetic entry
-          const key = "__D2XS_STAKED__";
+          // Aggregate staked tokens under per-symbol synthetic entries
+          const key = `__STAKED_${t.stakingDetails.stakedSymbol}__`;
           const existing = map.get(key);
           if (existing) {
-            existing.uiAmount += t.stakingDetails.stakedD2X;
+            existing.uiAmount += t.stakingDetails.stakedAmount;
           } else {
-            map.set(key, { mint: key, symbol: "D2X", name: "D2X staked (ScPrime)", uiAmount: t.stakingDetails.stakedD2X, decimals: 3 });
+            const sym = t.stakingDetails.stakedSymbol;
+            const dec = sym === "D2X" ? 3 : sym === "SCP" ? 9 : 6;
+            map.set(key, { mint: key, symbol: sym, name: `${sym} staked (ScPrime)`, uiAmount: t.stakingDetails.stakedAmount, decimals: dec });
           }
         } else {
           const existing = map.get(t.mint);
@@ -283,7 +285,7 @@ export default function Home() {
                                 {token.stakingDetails && (
                                   <div className="flex items-center gap-2 mt-0.5">
                                     <span className="text-xs text-violet-400">
-                                      {token.stakingDetails.stakedD2X.toLocaleString("es-ES", { maximumFractionDigits: 3 })} D2X staked
+                                      {token.stakingDetails.stakedAmount.toLocaleString("es-ES", { maximumFractionDigits: 6 })} {token.stakingDetails.stakedSymbol} staked
                                     </span>
                                     {token.stakingDetails.unlockAt && (
                                       <span className="text-xs text-zinc-500">

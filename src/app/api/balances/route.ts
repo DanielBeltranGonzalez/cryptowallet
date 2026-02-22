@@ -9,8 +9,9 @@ export type TokenBalance = {
   uiAmount: number;
   decimals: number;
   stakingDetails?: {
-    stakedD2X: number;
-    unlockAt?: number; // Unix timestamp (seconds)
+    stakedAmount: number;  // UI amount of the underlying staked token
+    stakedSymbol: string;  // "D2X" or "SCP"
+    unlockAt?: number;     // Unix timestamp (seconds)
   };
 };
 
@@ -188,15 +189,22 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// ── ScPrime D2X Staking Position lookup ──────────────────────────────────────
-const SCPRIME_D2X_STAKING_PROGRAM = "iA2NuwXky5631nDQ2XkhPXauHvcHpi1gtqhwYUxkioZ";
-const SCPRIME_D2X_SYMBOL = "D2XS";
-const D2X_RAW_DECIMALS = 3;
+// ── ScPrime staking position lookup (D2XS and SCPS) ─────────────────────────
+const SCPRIME_STAKING_PROGRAM = "iA2NuwXky5631nDQ2XkhPXauHvcHpi1gtqhwYUxkioZ";
 
-async function fetchScPrimeD2XStaking(
+// NFT symbol → { underlying token symbol, raw decimals, position account size in bytes }
+const SCPRIME_STAKING_POSITIONS: Record<string, { symbol: string; decimals: number; positionSize: number }> = {
+  D2XS: { symbol: "D2X", decimals: 3,  positionSize: 98 },
+  SCPS: { symbol: "SCP", decimals: 9,  positionSize: 74 },
+};
+
+async function fetchScPrimeStaking(
   nftMintStr: string,
+  positionSize: number,
+  decimals: number,
   connection: Connection
-): Promise<{ stakedD2X: number; unlockAt?: number } | null> {
+): Promise<{ stakedAmount: number; stakedSymbol: string; unlockAt?: number } | null> {
+  // stakedSymbol is resolved by the caller; we only need decimals and positionSize here
   try {
     const sigs = await withBackoff(() =>
       connection.getSignaturesForAddress(new PublicKey(nftMintStr), { limit: 10 })
@@ -216,7 +224,7 @@ async function fetchScPrimeD2XStaking(
         return k.pubkey?.toBase58?.() ?? String(k.pubkey);
       });
 
-      if (!accountKeys.includes(SCPRIME_D2X_STAKING_PROGRAM)) continue;
+      if (!accountKeys.includes(SCPRIME_STAKING_PROGRAM)) continue;
 
       const accts = await withBackoff(() =>
         connection.getMultipleAccountsInfo(accountKeys.map((a) => new PublicKey(a)))
@@ -225,18 +233,18 @@ async function fetchScPrimeD2XStaking(
       for (const acct of accts) {
         if (
           acct &&
-          acct.owner.toBase58() === SCPRIME_D2X_STAKING_PROGRAM &&
-          acct.data.length === 98
+          acct.owner.toBase58() === SCPRIME_STAKING_PROGRAM &&
+          acct.data.length === positionSize
         ) {
           const data = Buffer.from(acct.data as Uint8Array);
           const rawAmount = data.readBigUInt64LE(0);
-          const stakedD2X = Number(rawAmount) / Math.pow(10, D2X_RAW_DECIMALS);
+          const stakedAmount = Number(rawAmount) / Math.pow(10, decimals);
           const unlockTimestamp = data.readUInt32LE(10);
           const unlockAt =
             unlockTimestamp > 1_700_000_000 && unlockTimestamp < 2_500_000_000
               ? unlockTimestamp
               : undefined;
-          return { stakedD2X, unlockAt };
+          return { stakedAmount, stakedSymbol: "", unlockAt }; // symbol filled by caller
         }
       }
     }
@@ -357,16 +365,18 @@ export async function POST(req: NextRequest) {
         ? await fetchOnChainMeta(unknownMints, connection)
         : new Map<string, { symbol: string; name: string }>();
 
-      // Fetch ScPrime D2X staking details for position NFTs
-      const stakingDetailsMap = new Map<string, { stakedD2X: number; unlockAt?: number }>();
-      const d2xsNfts = decoded.filter((t) => {
+      // Fetch ScPrime staking details for D2XS and SCPS position NFTs
+      const stakingDetailsMap = new Map<string, { stakedAmount: number; stakedSymbol: string; unlockAt?: number }>();
+      const stakingNfts = decoded.filter((t) => {
         const meta = tokenList.get(t.mint) ?? onChainMeta.get(t.mint);
-        return meta?.symbol === SCPRIME_D2X_SYMBOL;
+        return meta?.symbol !== undefined && meta.symbol in SCPRIME_STAKING_POSITIONS;
       });
-      for (const t of d2xsNfts) {
+      for (const t of stakingNfts) {
+        const meta = tokenList.get(t.mint) ?? onChainMeta.get(t.mint);
+        const posConfig = SCPRIME_STAKING_POSITIONS[meta!.symbol];
         await sleep(300);
-        const details = await fetchScPrimeD2XStaking(t.mint, connection);
-        if (details) stakingDetailsMap.set(t.mint, details);
+        const details = await fetchScPrimeStaking(t.mint, posConfig.positionSize, posConfig.decimals, connection);
+        if (details) stakingDetailsMap.set(t.mint, { ...details, stakedSymbol: posConfig.symbol });
       }
 
       tokens = decoded
