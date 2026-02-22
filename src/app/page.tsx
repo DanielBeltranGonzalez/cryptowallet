@@ -116,11 +116,9 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
       <div className="w-full max-w-6xl mx-auto space-y-6">
         {/* Header */}
-        <div className="flex items-center justify-between">
-          <h1 className="text-3xl font-bold text-white">
-            Solana Wallets Balance Viewer
-          </h1>
-        </div>
+        <h1 className="text-3xl font-bold text-white text-center">
+          Solana Wallets Balance Viewer
+        </h1>
 
         {/* Two-column layout */}
         <div className="flex gap-6 items-start">
