@@ -96,11 +96,22 @@ export default function Home() {
     const map = new Map<string, { mint: string; symbol: string; name: string; uiAmount: number; decimals: number }>();
     for (const w of okWallets) {
       for (const t of w.tokens) {
-        const existing = map.get(t.mint);
-        if (existing) {
-          existing.uiAmount += t.uiAmount;
+        if (t.stakingDetails) {
+          // Aggregate staked D2X under a single synthetic entry
+          const key = "__D2XS_STAKED__";
+          const existing = map.get(key);
+          if (existing) {
+            existing.uiAmount += t.stakingDetails.stakedD2X;
+          } else {
+            map.set(key, { mint: key, symbol: "D2X", name: "D2X staked (ScPrime)", uiAmount: t.stakingDetails.stakedD2X, decimals: 3 });
+          }
         } else {
-          map.set(t.mint, { ...t });
+          const existing = map.get(t.mint);
+          if (existing) {
+            existing.uiAmount += t.uiAmount;
+          } else {
+            map.set(t.mint, { ...t });
+          }
         }
       }
     }
@@ -269,6 +280,18 @@ export default function Home() {
                               <div className="min-w-0">
                                 <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
                                 <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
+                                {token.stakingDetails && (
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <span className="text-xs text-violet-400">
+                                      {token.stakingDetails.stakedD2X.toLocaleString("es-ES", { maximumFractionDigits: 3 })} D2X staked
+                                    </span>
+                                    {token.stakingDetails.unlockAt && (
+                                      <span className="text-xs text-zinc-500">
+                                        · unlock {new Date(token.stakingDetails.unlockAt * 1000).toLocaleDateString("es-ES")}
+                                      </span>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                               <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
                                 {token.uiAmount.toLocaleString("es-ES", {

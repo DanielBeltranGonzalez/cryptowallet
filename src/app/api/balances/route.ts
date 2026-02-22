@@ -8,6 +8,10 @@ export type TokenBalance = {
   name: string;
   uiAmount: number;
   decimals: number;
+  stakingDetails?: {
+    stakedD2X: number;
+    unlockAt?: number; // Unix timestamp (seconds)
+  };
 };
 
 export type WalletData =
@@ -184,6 +188,64 @@ function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// ── ScPrime D2X Staking Position lookup ──────────────────────────────────────
+const SCPRIME_D2X_STAKING_PROGRAM = "iA2NuwXky5631nDQ2XkhPXauHvcHpi1gtqhwYUxkioZ";
+const SCPRIME_D2X_SYMBOL = "D2XS";
+const D2X_RAW_DECIMALS = 3;
+
+async function fetchScPrimeD2XStaking(
+  nftMintStr: string,
+  connection: Connection
+): Promise<{ stakedD2X: number; unlockAt?: number } | null> {
+  try {
+    const sigs = await withBackoff(() =>
+      connection.getSignaturesForAddress(new PublicKey(nftMintStr), { limit: 10 })
+    );
+    if (sigs.length === 0) return null;
+
+    // The creation tx is the oldest — last in the desc-ordered list
+    for (const sig of [...sigs].reverse()) {
+      const tx = await withBackoff(() =>
+        connection.getParsedTransaction(sig.signature, { maxSupportedTransactionVersion: 0 })
+      );
+      if (!tx) continue;
+
+      type AnyKey = string | { pubkey?: { toBase58?: () => string } };
+      const accountKeys: string[] = (tx.transaction.message.accountKeys as AnyKey[]).map((k) => {
+        if (typeof k === "string") return k;
+        return k.pubkey?.toBase58?.() ?? String(k.pubkey);
+      });
+
+      if (!accountKeys.includes(SCPRIME_D2X_STAKING_PROGRAM)) continue;
+
+      const accts = await withBackoff(() =>
+        connection.getMultipleAccountsInfo(accountKeys.map((a) => new PublicKey(a)))
+      );
+
+      for (const acct of accts) {
+        if (
+          acct &&
+          acct.owner.toBase58() === SCPRIME_D2X_STAKING_PROGRAM &&
+          acct.data.length === 98
+        ) {
+          const data = Buffer.from(acct.data as Uint8Array);
+          const rawAmount = data.readBigUInt64LE(0);
+          const stakedD2X = Number(rawAmount) / Math.pow(10, D2X_RAW_DECIMALS);
+          const unlockTimestamp = data.readUInt32LE(10);
+          const unlockAt =
+            unlockTimestamp > 1_700_000_000 && unlockTimestamp < 2_500_000_000
+              ? unlockTimestamp
+              : undefined;
+          return { stakedD2X, unlockAt };
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // ── Route handler ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json() as unknown;
@@ -295,18 +357,32 @@ export async function POST(req: NextRequest) {
         ? await fetchOnChainMeta(unknownMints, connection)
         : new Map<string, { symbol: string; name: string }>();
 
+      // Fetch ScPrime D2X staking details for position NFTs
+      const stakingDetailsMap = new Map<string, { stakedD2X: number; unlockAt?: number }>();
+      const d2xsNfts = decoded.filter((t) => {
+        const meta = tokenList.get(t.mint) ?? onChainMeta.get(t.mint);
+        return meta?.symbol === SCPRIME_D2X_SYMBOL;
+      });
+      for (const t of d2xsNfts) {
+        await sleep(300);
+        const details = await fetchScPrimeD2XStaking(t.mint, connection);
+        if (details) stakingDetailsMap.set(t.mint, details);
+      }
+
       tokens = decoded
         .map((t) => {
           const decimals = mintDecimalsMap.get(t.mint) ?? 0;
           const uiAmount = Number(t.amount.toString()) / Math.pow(10, decimals);
           const meta = tokenList.get(t.mint) ?? onChainMeta.get(t.mint);
-          return {
+          const base: TokenBalance = {
             mint: t.mint,
             symbol: meta?.symbol ?? t.mint.slice(0, 4) + "…",
             name: meta?.name ?? "Token desconocido",
             uiAmount,
             decimals,
           };
+          const stakingDetails = stakingDetailsMap.get(t.mint);
+          return stakingDetails ? { ...base, stakingDetails } : base;
         })
         .filter((t) => t.uiAmount > 0)
         .sort((a, b) => {
