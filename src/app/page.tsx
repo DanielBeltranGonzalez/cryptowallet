@@ -261,7 +261,7 @@ export default function Home() {
                       {/* Lista de tokens */}
                       {wallet?.status === "ok" && wallet.tokens.length > 0 && (
                         <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
-                          {wallet.tokens.map((token) => (
+                          {[...wallet.tokens].sort((a, b) => a.name.localeCompare(b.name)).map((token) => (
                             <div
                               key={token.mint}
                               className="flex items-center justify-between px-4 py-2"
