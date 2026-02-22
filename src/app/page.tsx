@@ -120,38 +120,7 @@ export default function Home() {
           <h1 className="text-3xl font-bold text-white">
             Solana Wallets Balance Viewer
           </h1>
-          <button
-            onClick={() => { setShowInput((v) => !v); setInput(""); }}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors shrink-0"
-          >
-            {showInput ? "Cancelar" : "Añadir"}
-          </button>
         </div>
-
-        {/* Input (visible only when showInput) */}
-        {showInput && (
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") addAddress();
-                if (e.key === "Escape") { setShowInput(false); setInput(""); }
-              }}
-              placeholder="Dirección de Solana..."
-              maxLength={100}
-              autoFocus
-              className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
-            />
-            <button
-              onClick={addAddress}
-              className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors"
-            >
-              Confirmar
-            </button>
-          </div>
-        )}
 
         {/* Two-column layout */}
         <div className="flex gap-6 items-start">
@@ -197,133 +166,159 @@ export default function Home() {
               </button>
             )}
 
-            {addresses.length === 0 && !showInput && (
-              <p className="text-center text-zinc-500 text-sm">
-                Añade una dirección de Solana para empezar.
-              </p>
-            )}
           </div>
 
-          {/* Right: Direcciones — tarjetas colapsadas */}
-          {addresses.length > 0 && (
-            <div className="flex-1 space-y-2">
-              {addresses.map((addr) => {
-                const wallet = wallets[addr];
-                const isOpen = expanded[addr] ?? false;
-                return (
-                  <div
-                    key={addr}
-                    className="rounded-lg bg-zinc-800 border border-zinc-700 overflow-hidden"
+          {/* Right: Direcciones — tarjetas colapsadas + botón añadir */}
+          <div className="flex-1 space-y-2">
+            {addresses.map((addr) => {
+              const wallet = wallets[addr];
+              const isOpen = expanded[addr] ?? false;
+              return (
+                <div
+                  key={addr}
+                  className="rounded-lg bg-zinc-800 border border-zinc-700 overflow-hidden"
+                >
+                  {/* Cabecera clicable para colapsar/expandir */}
+                  <button
+                    onClick={() => toggleExpanded(addr)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-700/40 transition-colors"
                   >
-                    {/* Cabecera clicable para colapsar/expandir */}
-                    <button
-                      onClick={() => toggleExpanded(addr)}
-                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-700/40 transition-colors"
-                    >
-                      <div className="flex-1 min-w-0 mr-3">
-                        <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {wallet === undefined && (
-                            <span className="text-xs text-zinc-600">Sin consultar</span>
-                          )}
-                          {wallet?.status === "invalid" && (
-                            <span className="text-xs text-red-400">Dirección inválida</span>
-                          )}
-                          {wallet?.status === "error" && (
-                            <span className="text-xs text-yellow-400">Error de red</span>
-                          )}
-                          {wallet?.status === "ok" && (
+                    <div className="flex-1 min-w-0 mr-3">
+                      <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        {wallet === undefined && (
+                          <span className="text-xs text-zinc-600">Sin consultar</span>
+                        )}
+                        {wallet?.status === "invalid" && (
+                          <span className="text-xs text-red-400">Dirección inválida</span>
+                        )}
+                        {wallet?.status === "error" && (
+                          <span className="text-xs text-yellow-400">Error de red</span>
+                        )}
+                        {wallet?.status === "ok" && (
+                          <>
+                            <span className="text-xs text-green-400">{wallet.sol.toFixed(4)} SOL</span>
+                            {wallet.tokensError && (
+                              <span className="text-xs text-yellow-400">· Error tokens</span>
+                            )}
+                            {!wallet.tokensError && wallet.tokens.length > 0 && (
+                              <span className="text-xs text-zinc-500">· {wallet.tokens.length} tokens</span>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                    <span className="text-zinc-500 text-xs">{isOpen ? "▲" : "▼"}</span>
+                  </button>
+
+                  {/* Contenido expandido */}
+                  {isOpen && (
+                    <div className="border-t border-zinc-700">
+                      {/* Balance + acciones */}
+                      <div className="flex items-center justify-between px-4 py-3">
+                        <div className="flex items-center gap-3">
+                          {wallet === undefined ? (
+                            <span className="text-zinc-500 text-sm">—</span>
+                          ) : wallet.status === "invalid" ? (
+                            <span className="text-red-400 text-sm">Dirección inválida</span>
+                          ) : wallet.status === "error" ? (
+                            <span className="text-yellow-400 text-sm" title={wallet.message}>
+                              Error de red — intenta de nuevo
+                            </span>
+                          ) : (
                             <>
-                              <span className="text-xs text-green-400">{wallet.sol.toFixed(4)} SOL</span>
-                              {wallet.tokensError && (
-                                <span className="text-xs text-yellow-400">· Error tokens</span>
+                              <span className="text-green-400 font-semibold text-sm">
+                                {wallet.sol.toFixed(6)} SOL
+                              </span>
+                              {wallet.tokens.length > 0 && (
+                                <span className="text-xs text-violet-400">
+                                  {wallet.tokens.length} token{wallet.tokens.length !== 1 ? "s" : ""}
+                                </span>
                               )}
-                              {!wallet.tokensError && wallet.tokens.length > 0 && (
-                                <span className="text-xs text-zinc-500">· {wallet.tokens.length} tokens</span>
+                              {wallet.tokens.length === 0 && !wallet.tokensError && (
+                                <span className="text-xs text-zinc-500">Sin tokens</span>
+                              )}
+                              {wallet.tokensError && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); retryTokens(addr); }}
+                                  disabled={retrying[addr]}
+                                  className="text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-50 transition-colors"
+                                  title={wallet.tokensError}
+                                >
+                                  {retrying[addr] ? "Reintentando…" : "Error tokens — reintentar"}
+                                </button>
                               )}
                             </>
                           )}
                         </div>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); removeAddress(addr); }}
+                          className="text-zinc-500 hover:text-red-400 transition-colors text-sm"
+                        >
+                          Eliminar
+                        </button>
                       </div>
-                      <span className="text-zinc-500 text-xs">{isOpen ? "▲" : "▼"}</span>
-                    </button>
 
-                    {/* Contenido expandido */}
-                    {isOpen && (
-                      <div className="border-t border-zinc-700">
-                        {/* Balance + acciones */}
-                        <div className="flex items-center justify-between px-4 py-3">
-                          <div className="flex items-center gap-3">
-                            {wallet === undefined ? (
-                              <span className="text-zinc-500 text-sm">—</span>
-                            ) : wallet.status === "invalid" ? (
-                              <span className="text-red-400 text-sm">Dirección inválida</span>
-                            ) : wallet.status === "error" ? (
-                              <span className="text-yellow-400 text-sm" title={wallet.message}>
-                                Error de red — intenta de nuevo
-                              </span>
-                            ) : (
-                              <>
-                                <span className="text-green-400 font-semibold text-sm">
-                                  {wallet.sol.toFixed(6)} SOL
-                                </span>
-                                {wallet.tokens.length > 0 && (
-                                  <span className="text-xs text-violet-400">
-                                    {wallet.tokens.length} token{wallet.tokens.length !== 1 ? "s" : ""}
-                                  </span>
-                                )}
-                                {wallet.tokens.length === 0 && !wallet.tokensError && (
-                                  <span className="text-xs text-zinc-500">Sin tokens</span>
-                                )}
-                                {wallet.tokensError && (
-                                  <button
-                                    onClick={(e) => { e.stopPropagation(); retryTokens(addr); }}
-                                    disabled={retrying[addr]}
-                                    className="text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-50 transition-colors"
-                                    title={wallet.tokensError}
-                                  >
-                                    {retrying[addr] ? "Reintentando…" : "Error tokens — reintentar"}
-                                  </button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                          <button
-                            onClick={(e) => { e.stopPropagation(); removeAddress(addr); }}
-                            className="text-zinc-500 hover:text-red-400 transition-colors text-sm"
-                          >
-                            Eliminar
-                          </button>
-                        </div>
-
-                        {/* Lista de tokens */}
-                        {wallet?.status === "ok" && wallet.tokens.length > 0 && (
-                          <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
-                            {wallet.tokens.map((token) => (
-                              <div
-                                key={token.mint}
-                                className="flex items-center justify-between px-4 py-2"
-                              >
-                                <div className="min-w-0">
-                                  <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
-                                  <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
-                                </div>
-                                <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
-                                  {token.uiAmount.toLocaleString("es-ES", {
-                                    maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
-                                  })}
-                                </span>
+                      {/* Lista de tokens */}
+                      {wallet?.status === "ok" && wallet.tokens.length > 0 && (
+                        <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
+                          {wallet.tokens.map((token) => (
+                            <div
+                              key={token.mint}
+                              className="flex items-center justify-between px-4 py-2"
+                            >
+                              <div className="min-w-0">
+                                <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
+                                <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
                               </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                              <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
+                                {token.uiAmount.toLocaleString("es-ES", {
+                                  maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
+                                })}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Input (visible only when showInput) */}
+            {showInput && (
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addAddress();
+                    if (e.key === "Escape") { setShowInput(false); setInput(""); }
+                  }}
+                  placeholder="Dirección de Solana..."
+                  maxLength={100}
+                  autoFocus
+                  className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
+                />
+                <button
+                  onClick={addAddress}
+                  className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors"
+                >
+                  Confirmar
+                </button>
+              </div>
+            )}
+
+            {/* Botón añadir dirección */}
+            <button
+              onClick={() => { setShowInput((v) => !v); setInput(""); }}
+              className="w-full rounded-lg border border-dashed border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-400 hover:border-violet-500 hover:text-violet-400 transition-colors"
+            >
+              {showInput ? "Cancelar" : "+ Añadir dirección"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
