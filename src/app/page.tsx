@@ -169,7 +169,7 @@ export default function Home() {
 
           {/* Right: Direcciones — tarjetas colapsadas + botón añadir */}
           <div className="flex-1 space-y-2">
-            {addresses.map((addr) => {
+            {[...addresses].sort((a, b) => a.localeCompare(b)).map((addr) => {
               const wallet = wallets[addr];
               const isOpen = expanded[addr] ?? false;
               return (
