@@ -115,13 +115,14 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
       <div className="w-full max-w-6xl mx-auto space-y-6">
-        {/* Header */}
-        <h1 className="text-3xl font-bold text-white text-center">
-          Solana Wallets Balance Viewer
-        </h1>
-
         {/* Two-column layout */}
-        <div className="flex gap-6 items-start">
+        <div className="flex flex-col gap-6">
+          {/* Header */}
+          <h1 className="text-3xl font-bold text-white text-center">
+            Solana Wallets Balance Viewer
+          </h1>
+
+          <div className="flex gap-6 items-start">
           {/* Left: Total + Actualizar */}
           <div className="w-80 shrink-0 space-y-4">
             {/* Total acumulado */}
@@ -316,6 +317,7 @@ export default function Home() {
             >
               {showInput ? "Cancelar" : "+ Añadir dirección"}
             </button>
+          </div>
           </div>
         </div>
       </div>
