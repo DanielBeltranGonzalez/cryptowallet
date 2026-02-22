@@ -125,6 +125,10 @@ export default function Home() {
     });
   })();
 
+  const d2xLiquid = totalTokens.find((t) => t.symbol === "D2X" && !t.mint.startsWith("__"));
+  const d2xStaked = totalTokens.find((t) => t.mint === "__STAKED_D2X__");
+  const d2xTotal = (d2xLiquid?.uiAmount ?? 0) + (d2xStaked?.uiAmount ?? 0);
+
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
       <div className="w-full max-w-6xl mx-auto space-y-6">
@@ -162,6 +166,17 @@ export default function Home() {
                         </span>
                       </div>
                     ))}
+                  </div>
+                )}
+                {d2xLiquid && d2xStaked && (
+                  <div className="flex items-center justify-between px-6 py-2 border-t border-violet-700/50 bg-zinc-700/20">
+                    <div className="min-w-0">
+                      <span className="text-sm font-medium text-violet-300">D2X</span>
+                      <span className="text-xs text-zinc-500 ml-2">líquido + staked</span>
+                    </div>
+                    <span className="text-sm text-violet-300 font-mono ml-4 shrink-0">
+                      {d2xTotal.toLocaleString("es-ES", { maximumFractionDigits: 3 })}
+                    </span>
                   </div>
                 )}
               </div>
