@@ -15,6 +15,9 @@ export type WalletData =
   | { status: "error"; message: string }
   | { status: "ok"; sol: number; tokens: TokenBalance[]; tokensError?: string; cachedAt?: number };
 
+// Maximum number of addresses accepted per request (DoS protection)
+const MAX_ADDRESSES = 20;
+
 // ── Token list cache (Solana Labs, ~13k known tokens) ────────────────────────
 let tokenListCache: Map<string, { symbol: string; name: string }> | null = null;
 let tokenListCachedAt = 0;
@@ -25,16 +28,35 @@ async function getTokenList(): Promise<Map<string, { symbol: string; name: strin
     return tokenListCache;
   }
   try {
-    const res = await fetch(
-      "https://raw.githubusercontent.com/solana-labs/token-list/main/src/tokens/solana.tokenlist.json"
-    );
-    const data = await res.json() as {
-      tokens: { chainId: number; address: string; symbol: string; name: string }[];
-    };
+    // Timeout to prevent indefinite hangs on slow/unresponsive upstream
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10_000);
+    let res: Response;
+    try {
+      res = await fetch(
+        "https://raw.githubusercontent.com/solana-labs/token-list/main/src/tokens/solana.tokenlist.json",
+        { signal: controller.signal }
+      );
+    } finally {
+      clearTimeout(timeoutId);
+    }
+
+    // Validate HTTP response before parsing
+    if (!res.ok) throw new Error(`Token list fetch failed: HTTP ${res.status}`);
+
+    const data = await res.json() as unknown;
+    if (
+      typeof data !== "object" ||
+      data === null ||
+      !Array.isArray((data as { tokens?: unknown }).tokens)
+    ) {
+      throw new Error("Unexpected token list format");
+    }
+
     tokenListCache = new Map(
-      data.tokens
-        .filter((t) => t.chainId === 101)
-        .map((t) => [t.address, { symbol: t.symbol, name: t.name }])
+      ((data as { tokens: { chainId: number; address: string; symbol: string; name: string }[] }).tokens)
+        .filter((t) => t.chainId === 101 && typeof t.address === "string")
+        .map((t) => [t.address, { symbol: String(t.symbol ?? ""), name: String(t.name ?? "") }])
     );
     tokenListCachedAt = Date.now();
   } catch {
@@ -44,6 +66,7 @@ async function getTokenList(): Promise<Map<string, { symbol: string; name: strin
 }
 
 // ── On-chain Metaplex metadata ───────────────────────────────────────────────
+// Official Metaplex Token Metadata program ID (mainnet-beta)
 const METADATA_PROGRAM_ID = new PublicKey("metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s");
 // Persistent per-mint cache (metadata is immutable in practice)
 const onChainMetaCache = new Map<string, { symbol: string; name: string } | null>();
@@ -58,10 +81,18 @@ function deriveMetadataPda(mint: PublicKey): PublicKey {
 function parseMetaplexAccount(data: Buffer): { name: string; symbol: string } | null {
   // Layout: 1 (key) + 32 (update_auth) + 32 (mint) + 4+32 (name) + 4+10 (symbol)
   if (data.length < 115 || data[0] !== 4) return null; // key 4 = MetadataV1
-  const name   = data.slice(69,  101).toString("utf8").replace(/\0+$/, "").trim();
-  const symbol = data.slice(105, 115).toString("utf8").replace(/\0+$/, "").trim();
-  if (!name && !symbol) return null;
-  return { name: name || "?", symbol: symbol || "?" };
+  try {
+    const name   = data.slice(69,  101).toString("utf8").replace(/\0+$/, "").trim();
+    const symbol = data.slice(105, 115).toString("utf8").replace(/\0+$/, "").trim();
+    if (!name && !symbol) return null;
+    // Limit lengths to prevent display abuse
+    return {
+      name:   name.slice(0, 50)   || "?",
+      symbol: symbol.slice(0, 20) || "?",
+    };
+  } catch {
+    return null;
+  }
 }
 
 async function fetchOnChainMeta(
@@ -130,6 +161,10 @@ function getRpcUrl(): string {
   return process.env.SOLANA_RPC_URL ?? clusterApiUrl("mainnet-beta");
 }
 
+function toErrorMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 async function withBackoff<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
@@ -151,11 +186,33 @@ function sleep(ms: number) {
 
 // ── Route handler ─────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
-  const { addresses, force = false } = await req.json();
+  const body = await req.json() as unknown;
+
+  // Validate request body shape
+  if (typeof body !== "object" || body === null) {
+    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+  }
+  const { addresses, force } = body as Record<string, unknown>;
 
   if (!Array.isArray(addresses)) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
+
+  // DoS protection: cap number of addresses per request
+  if (addresses.length > MAX_ADDRESSES) {
+    return NextResponse.json(
+      { error: `Too many addresses (max ${MAX_ADDRESSES})` },
+      { status: 400 }
+    );
+  }
+
+  // Validate each address is a non-empty string
+  if (!addresses.every((a) => typeof a === "string" && a.length > 0 && a.length <= 100)) {
+    return NextResponse.json({ error: "Invalid address format" }, { status: 400 });
+  }
+
+  // Validate `force` is boolean (ignore other types)
+  const forceRefresh = force === true;
 
   const connection = new Connection(getRpcUrl(), {
     commitment: "confirmed",
@@ -165,14 +222,14 @@ export async function POST(req: NextRequest) {
   const tokenList = await getTokenList();
   const results: Record<string, WalletData> = {};
 
-  for (const addr of addresses) {
+  for (const addr of addresses as string[]) {
     // Return cache if fresh
-    if (!force) {
+    if (!forceRefresh) {
       const cached = getCached(addr);
       if (cached) { results[addr] = cached; continue; }
     }
 
-    // Validate address
+    // Validate address format
     let pubkey: PublicKey;
     try {
       pubkey = new PublicKey(addr);
@@ -187,7 +244,7 @@ export async function POST(req: NextRequest) {
     try {
       lamports = await withBackoff(() => connection.getBalance(pubkey));
     } catch (e) {
-      results[addr] = { status: "error", message: (e as Error).message };
+      results[addr] = { status: "error", message: toErrorMessage(e) };
       continue;
     }
 
@@ -259,8 +316,9 @@ export async function POST(req: NextRequest) {
           return b.uiAmount - a.uiAmount;
         });
     } catch (e) {
-      tokensError = (e as Error).message;
-      console.error(`[balances] token fetch failed for ${addr}:`, tokensError);
+      // Omit address from log to avoid exposing user data
+      tokensError = toErrorMessage(e);
+      console.error("[balances] token fetch failed:", tokensError);
     }
 
     const walletData: Extract<WalletData, { status: "ok" }> = {

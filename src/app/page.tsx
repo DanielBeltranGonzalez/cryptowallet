@@ -113,11 +113,12 @@ export default function Home() {
   })();
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-100 flex items-center justify-center p-6">
-      <div className="w-full max-w-2xl space-y-6">
+    <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
+      <div className="w-full max-w-6xl mx-auto space-y-6">
+        {/* Header */}
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold text-white">
-            Solana Wallet Balance Viewer
+            Solana Wallets Balance Viewer
           </h1>
           <button
             onClick={() => { setShowInput((v) => !v); setInput(""); }}
@@ -152,172 +153,178 @@ export default function Home() {
           </div>
         )}
 
-        {/* Total acumulado — primero */}
-        {okWallets.length > 0 && (
-          <div className="rounded-lg bg-zinc-800 border border-violet-700 overflow-hidden">
-            <div className="px-6 py-4 text-center border-b border-violet-700/50">
-              <p className="text-sm text-zinc-400 mb-1">Total acumulado</p>
-              <p className="text-2xl font-bold text-violet-400">
-                {totalSol.toFixed(6)} SOL
-              </p>
-            </div>
-            {totalTokens.length > 0 && (
-              <div className="divide-y divide-zinc-700/50">
-                {totalTokens.map((token) => (
-                  <div key={token.mint} className="flex items-center justify-between px-6 py-2">
-                    <div className="min-w-0">
-                      <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
-                      <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
-                    </div>
-                    <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
-                      {token.uiAmount.toLocaleString("es-ES", {
-                        maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
-                      })}
-                    </span>
+        {/* Two-column layout */}
+        <div className="flex gap-6 items-start">
+          {/* Left: Total + Actualizar */}
+          <div className="w-80 shrink-0 space-y-4">
+            {/* Total acumulado */}
+            {okWallets.length > 0 && (
+              <div className="rounded-lg bg-zinc-800 border border-violet-700 overflow-hidden">
+                <div className="px-6 py-4 text-center border-b border-violet-700/50">
+                  <p className="text-sm text-zinc-400 mb-1">Total acumulado</p>
+                  <p className="text-2xl font-bold text-violet-400">
+                    {totalSol.toFixed(6)} SOL
+                  </p>
+                </div>
+                {totalTokens.length > 0 && (
+                  <div className="divide-y divide-zinc-700/50">
+                    {totalTokens.map((token) => (
+                      <div key={token.mint} className="flex items-center justify-between px-6 py-2">
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
+                          <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
+                        </div>
+                        <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
+                          {token.uiAmount.toLocaleString("es-ES", {
+                            maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
+                          })}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
               </div>
             )}
+
+            {/* Actualizar */}
+            {addresses.length > 0 && (
+              <button
+                onClick={fetchBalances}
+                disabled={loading}
+                className="w-full rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Consultando…" : "Actualizar saldos"}
+              </button>
+            )}
+
+            {addresses.length === 0 && !showInput && (
+              <p className="text-center text-zinc-500 text-sm">
+                Añade una dirección de Solana para empezar.
+              </p>
+            )}
           </div>
-        )}
 
-        {/* Actualizar */}
-        {addresses.length > 0 && (
-          <button
-            onClick={fetchBalances}
-            disabled={loading}
-            className="w-full rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? "Consultando…" : "Actualizar saldos"}
-          </button>
-        )}
-
-        {/* Direcciones — tarjetas colapsadas */}
-        {addresses.length > 0 && (
-          <div className="space-y-2">
-            {addresses.map((addr) => {
-              const wallet = wallets[addr];
-              const isOpen = expanded[addr] ?? false;
-              return (
-                <div
-                  key={addr}
-                  className="rounded-lg bg-zinc-800 border border-zinc-700 overflow-hidden"
-                >
-                  {/* Cabecera clicable para colapsar/expandir */}
-                  <button
-                    onClick={() => toggleExpanded(addr)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-700/40 transition-colors"
+          {/* Right: Direcciones — tarjetas colapsadas */}
+          {addresses.length > 0 && (
+            <div className="flex-1 space-y-2">
+              {addresses.map((addr) => {
+                const wallet = wallets[addr];
+                const isOpen = expanded[addr] ?? false;
+                return (
+                  <div
+                    key={addr}
+                    className="rounded-lg bg-zinc-800 border border-zinc-700 overflow-hidden"
                   >
-                    <div className="flex-1 min-w-0 mr-3">
-                      <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        {wallet === undefined && (
-                          <span className="text-xs text-zinc-600">Sin consultar</span>
-                        )}
-                        {wallet?.status === "invalid" && (
-                          <span className="text-xs text-red-400">Dirección inválida</span>
-                        )}
-                        {wallet?.status === "error" && (
-                          <span className="text-xs text-yellow-400">Error de red</span>
-                        )}
-                        {wallet?.status === "ok" && (
-                          <>
-                            <span className="text-xs text-green-400">{wallet.sol.toFixed(4)} SOL</span>
-                            {wallet.tokensError && (
-                              <span className="text-xs text-yellow-400">· Error tokens</span>
-                            )}
-                            {!wallet.tokensError && wallet.tokens.length > 0 && (
-                              <span className="text-xs text-zinc-500">· {wallet.tokens.length} tokens</span>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    <span className="text-zinc-500 text-xs">{isOpen ? "▲" : "▼"}</span>
-                  </button>
-
-                  {/* Contenido expandido */}
-                  {isOpen && (
-                    <div className="border-t border-zinc-700">
-                      {/* Balance + acciones */}
-                      <div className="flex items-center justify-between px-4 py-3">
-                        <div className="flex items-center gap-3">
-                          {wallet === undefined ? (
-                            <span className="text-zinc-500 text-sm">—</span>
-                          ) : wallet.status === "invalid" ? (
-                            <span className="text-red-400 text-sm">Dirección inválida</span>
-                          ) : wallet.status === "error" ? (
-                            <span className="text-yellow-400 text-sm" title={wallet.message}>
-                              Error de red — intenta de nuevo
-                            </span>
-                          ) : (
+                    {/* Cabecera clicable para colapsar/expandir */}
+                    <button
+                      onClick={() => toggleExpanded(addr)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-700/40 transition-colors"
+                    >
+                      <div className="flex-1 min-w-0 mr-3">
+                        <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          {wallet === undefined && (
+                            <span className="text-xs text-zinc-600">Sin consultar</span>
+                          )}
+                          {wallet?.status === "invalid" && (
+                            <span className="text-xs text-red-400">Dirección inválida</span>
+                          )}
+                          {wallet?.status === "error" && (
+                            <span className="text-xs text-yellow-400">Error de red</span>
+                          )}
+                          {wallet?.status === "ok" && (
                             <>
-                              <span className="text-green-400 font-semibold text-sm">
-                                {wallet.sol.toFixed(6)} SOL
-                              </span>
-                              {wallet.tokens.length > 0 && (
-                                <span className="text-xs text-violet-400">
-                                  {wallet.tokens.length} token{wallet.tokens.length !== 1 ? "s" : ""}
-                                </span>
-                              )}
-                              {wallet.tokens.length === 0 && !wallet.tokensError && (
-                                <span className="text-xs text-zinc-500">Sin tokens</span>
-                              )}
+                              <span className="text-xs text-green-400">{wallet.sol.toFixed(4)} SOL</span>
                               {wallet.tokensError && (
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); retryTokens(addr); }}
-                                  disabled={retrying[addr]}
-                                  className="text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-50 transition-colors"
-                                  title={wallet.tokensError}
-                                >
-                                  {retrying[addr] ? "Reintentando…" : "Error tokens — reintentar"}
-                                </button>
+                                <span className="text-xs text-yellow-400">· Error tokens</span>
+                              )}
+                              {!wallet.tokensError && wallet.tokens.length > 0 && (
+                                <span className="text-xs text-zinc-500">· {wallet.tokens.length} tokens</span>
                               )}
                             </>
                           )}
                         </div>
-                        <button
-                          onClick={(e) => { e.stopPropagation(); removeAddress(addr); }}
-                          className="text-zinc-500 hover:text-red-400 transition-colors text-sm"
-                        >
-                          Eliminar
-                        </button>
                       </div>
+                      <span className="text-zinc-500 text-xs">{isOpen ? "▲" : "▼"}</span>
+                    </button>
 
-                      {/* Lista de tokens */}
-                      {wallet?.status === "ok" && wallet.tokens.length > 0 && (
-                        <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
-                          {wallet.tokens.map((token) => (
-                            <div
-                              key={token.mint}
-                              className="flex items-center justify-between px-4 py-2"
-                            >
-                              <div className="min-w-0">
-                                <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
-                                <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
-                              </div>
-                              <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
-                                {token.uiAmount.toLocaleString("es-ES", {
-                                  maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
-                                })}
+                    {/* Contenido expandido */}
+                    {isOpen && (
+                      <div className="border-t border-zinc-700">
+                        {/* Balance + acciones */}
+                        <div className="flex items-center justify-between px-4 py-3">
+                          <div className="flex items-center gap-3">
+                            {wallet === undefined ? (
+                              <span className="text-zinc-500 text-sm">—</span>
+                            ) : wallet.status === "invalid" ? (
+                              <span className="text-red-400 text-sm">Dirección inválida</span>
+                            ) : wallet.status === "error" ? (
+                              <span className="text-yellow-400 text-sm" title={wallet.message}>
+                                Error de red — intenta de nuevo
                               </span>
-                            </div>
-                          ))}
+                            ) : (
+                              <>
+                                <span className="text-green-400 font-semibold text-sm">
+                                  {wallet.sol.toFixed(6)} SOL
+                                </span>
+                                {wallet.tokens.length > 0 && (
+                                  <span className="text-xs text-violet-400">
+                                    {wallet.tokens.length} token{wallet.tokens.length !== 1 ? "s" : ""}
+                                  </span>
+                                )}
+                                {wallet.tokens.length === 0 && !wallet.tokensError && (
+                                  <span className="text-xs text-zinc-500">Sin tokens</span>
+                                )}
+                                {wallet.tokensError && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); retryTokens(addr); }}
+                                    disabled={retrying[addr]}
+                                    className="text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-50 transition-colors"
+                                    title={wallet.tokensError}
+                                  >
+                                    {retrying[addr] ? "Reintentando…" : "Error tokens — reintentar"}
+                                  </button>
+                                )}
+                              </>
+                            )}
+                          </div>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); removeAddress(addr); }}
+                            className="text-zinc-500 hover:text-red-400 transition-colors text-sm"
+                          >
+                            Eliminar
+                          </button>
                         </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
 
-        {addresses.length === 0 && !showInput && (
-          <p className="text-center text-zinc-500 text-sm">
-            Añade una dirección de Solana para empezar.
-          </p>
-        )}
+                        {/* Lista de tokens */}
+                        {wallet?.status === "ok" && wallet.tokens.length > 0 && (
+                          <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
+                            {wallet.tokens.map((token) => (
+                              <div
+                                key={token.mint}
+                                className="flex items-center justify-between px-4 py-2"
+                              >
+                                <div className="min-w-0">
+                                  <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
+                                  <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
+                                </div>
+                                <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
+                                  {token.uiAmount.toLocaleString("es-ES", {
+                                    maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
+                                  })}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
