@@ -21,6 +21,7 @@ export type TokenBalance = {
   name: string;
   uiAmount: number;
   decimals: number;
+  isPositionNft?: boolean;  // true for staking/LP position NFTs that should not appear in totals
   stakingDetails?: {
     stakedAmount: number;   // UI amount of the underlying staked token
     stakedSymbol: string;   // "D2X" or "SCP"
@@ -604,8 +605,10 @@ export async function POST(req: NextRequest) {
           };
           const stakingDetails = stakingDetailsMap.get(t.mint);
           const whirlpoolDetails = whirlpoolPositions.get(t.mint);
-          if (stakingDetails) return { ...base, stakingDetails };
+          const isPositionNft = meta?.symbol !== undefined && meta.symbol in SCPRIME_STAKING_POSITIONS;
+          if (stakingDetails) return { ...base, isPositionNft: true, stakingDetails };
           if (whirlpoolDetails) return { ...base, whirlpoolDetails };
+          if (isPositionNft) return { ...base, isPositionNft: true };
           return base;
         })
         .filter((t) => t.uiAmount > 0)

@@ -116,7 +116,7 @@ export default function Home() {
           const wd = t.whirlpoolDetails;
           add(wd.tokenAMint, wd.tokenASymbol, wd.tokenAName, wd.tokenAAmount, wd.tokenADecimals, true);
           add(wd.tokenBMint, wd.tokenBSymbol, wd.tokenBName, wd.tokenBAmount, wd.tokenBDecimals, true);
-        } else {
+        } else if (!t.isPositionNft) {
           add(t.mint, t.symbol, t.name, t.uiAmount, t.decimals, false);
         }
       }
