@@ -395,20 +395,8 @@ export default function Home() {
                     {totalSol.toFixed(6)} SOL
                   </p>
                   {(() => {
-                    if (!priceData) return null;
-                    let totalUsd = 0;
-                    const solPrice = priceData.prices[SOL_MINT];
-                    if (solPrice != null) totalUsd += totalSol * solPrice;
-                    for (const token of totalTokens) {
-                      const price = priceData.prices[token.mint];
-                      if (price != null) totalUsd += token.uiAmount * price;
-                    }
-                    if (totalUsd === 0) return null;
-                    const usdStr = "$" + totalUsd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                    const eurStr = priceData.eurRate != null
-                      ? " | €" + (totalUsd * priceData.eurRate).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                      : "";
-                    return <p className="text-lg font-semibold text-amber-400 mt-2">{usdStr}{eurStr}</p>;
+                    const priceLine = formatPriceLine(totalSol, priceData?.prices[SOL_MINT], priceData?.eurRate ?? null);
+                    return priceLine ? <p className="text-sm text-amber-400/80 mt-1">{priceLine}</p> : null;
                   })()}
                 </div>
                 {totalTokens.length > 0 && (
