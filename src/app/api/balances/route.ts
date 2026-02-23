@@ -7,10 +7,12 @@ export type WhirlpoolDetails = {
   tokenASymbol: string;
   tokenAName: string;
   tokenAAmount: number;
+  tokenADecimals: number;
   tokenBMint: string;
   tokenBSymbol: string;
   tokenBName: string;
   tokenBAmount: number;
+  tokenBDecimals: number;
 };
 
 export type TokenBalance = {
@@ -379,10 +381,12 @@ async function fetchWhirlpoolPositions(
         tokenASymbol: metaA.symbol,
         tokenAName: metaA.name,
         tokenAAmount: Number(amountA) / Math.pow(10, decimalsA),
+        tokenADecimals: decimalsA,
         tokenBMint: mintB,
         tokenBSymbol: metaB.symbol,
         tokenBName: metaB.name,
         tokenBAmount: Number(amountB) / Math.pow(10, decimalsB),
+        tokenBDecimals: decimalsB,
       });
     }
   } catch { /* return partial result on any error */ }

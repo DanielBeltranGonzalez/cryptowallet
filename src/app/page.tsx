@@ -93,29 +93,32 @@ export default function Home() {
   const totalSol = okWallets.reduce((sum, w) => sum + w.sol, 0);
 
   const totalTokens = (() => {
-    const map = new Map<string, { mint: string; symbol: string; name: string; uiAmount: number; decimals: number }>();
+    type Entry = { mint: string; symbol: string; name: string; uiAmount: number; decimals: number; lpAmount: number };
+    const map = new Map<string, Entry>();
+
+    const add = (mint: string, symbol: string, name: string, amount: number, decimals: number, fromLp: boolean) => {
+      const existing = map.get(mint);
+      if (existing) {
+        existing.uiAmount += amount;
+        if (fromLp) existing.lpAmount += amount;
+      } else {
+        map.set(mint, { mint, symbol, name, uiAmount: amount, decimals, lpAmount: fromLp ? amount : 0 });
+      }
+    };
+
     for (const w of okWallets) {
       for (const t of w.tokens) {
         if (t.stakingDetails) {
-          // Aggregate staked tokens under per-symbol synthetic entries
           const key = `__STAKED_${t.stakingDetails.stakedSymbol}__`;
-          const existing = map.get(key);
-          if (existing) {
-            existing.uiAmount += t.stakingDetails.stakedAmount;
-          } else {
-            const sym = t.stakingDetails.stakedSymbol;
-            const dec = sym === "D2X" ? 3 : sym === "SCP" ? 9 : 6;
-            map.set(key, { mint: key, symbol: sym, name: `${sym} staked (ScPrime)`, uiAmount: t.stakingDetails.stakedAmount, decimals: dec });
-          }
+          const sym = t.stakingDetails.stakedSymbol;
+          const dec = sym === "D2X" ? 3 : sym === "SCP" ? 9 : 6;
+          add(key, sym, `${sym} staked (ScPrime)`, t.stakingDetails.stakedAmount, dec, false);
         } else if (t.whirlpoolDetails) {
-          // Skip Whirlpool position NFTs from totals (underlying amounts not aggregated)
+          const wd = t.whirlpoolDetails;
+          add(wd.tokenAMint, wd.tokenASymbol, wd.tokenAName, wd.tokenAAmount, wd.tokenADecimals, true);
+          add(wd.tokenBMint, wd.tokenBSymbol, wd.tokenBName, wd.tokenBAmount, wd.tokenBDecimals, true);
         } else {
-          const existing = map.get(t.mint);
-          if (existing) {
-            existing.uiAmount += t.uiAmount;
-          } else {
-            map.set(t.mint, { ...t });
-          }
+          add(t.mint, t.symbol, t.name, t.uiAmount, t.decimals, false);
         }
       }
     }
@@ -130,6 +133,11 @@ export default function Home() {
   const d2xLiquid = totalTokens.find((t) => t.symbol === "D2X" && !t.mint.startsWith("__"));
   const d2xStaked = totalTokens.find((t) => t.mint === "__STAKED_D2X__");
   const d2xTotal = (d2xLiquid?.uiAmount ?? 0) + (d2xStaked?.uiAmount ?? 0);
+  const d2xLiquidSources = [
+    (d2xLiquid?.uiAmount ?? 0) - (d2xLiquid?.lpAmount ?? 0) > 0 && "líquido",
+    (d2xLiquid?.lpAmount ?? 0) > 0 && "LP",
+    d2xStaked && "staked",
+  ].filter(Boolean).join(" + ");
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
@@ -160,6 +168,11 @@ export default function Home() {
                         <div className="min-w-0">
                           <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
                           <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
+                          {token.lpAmount > 0 && (
+                            <div className="text-xs text-blue-400/80 mt-0.5">
+                              {token.lpAmount.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals })} en LP
+                            </div>
+                          )}
                         </div>
                         <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
                           {token.uiAmount.toLocaleString("es-ES", {
@@ -174,7 +187,7 @@ export default function Home() {
                   <div className="flex items-center justify-between px-6 py-2 border-t border-violet-700/50 bg-zinc-700/20">
                     <div className="min-w-0">
                       <span className="text-sm font-medium text-violet-300">D2X</span>
-                      <span className="text-xs text-zinc-500 ml-2">líquido + staked</span>
+                      <span className="text-xs text-zinc-500 ml-2">{d2xLiquidSources}</span>
                     </div>
                     <span className="text-sm text-violet-300 font-mono ml-4 shrink-0">
                       {d2xTotal.toLocaleString("es-ES", { maximumFractionDigits: 3 })}
