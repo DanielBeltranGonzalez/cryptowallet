@@ -93,26 +93,25 @@ export default function Home() {
   const totalSol = okWallets.reduce((sum, w) => sum + w.sol, 0);
 
   const totalTokens = (() => {
-    type Entry = { mint: string; symbol: string; name: string; uiAmount: number; decimals: number; lpAmount: number };
+    type Entry = { mint: string; symbol: string; name: string; uiAmount: number; decimals: number; lpAmount: number; stakedAmount: number };
     const map = new Map<string, Entry>();
 
-    const add = (mint: string, symbol: string, name: string, amount: number, decimals: number, fromLp: boolean) => {
+    const add = (mint: string, symbol: string, name: string, amount: number, decimals: number, fromLp: boolean, fromStaking: boolean = false) => {
       const existing = map.get(mint);
       if (existing) {
         existing.uiAmount += amount;
         if (fromLp) existing.lpAmount += amount;
+        if (fromStaking) existing.stakedAmount += amount;
       } else {
-        map.set(mint, { mint, symbol, name, uiAmount: amount, decimals, lpAmount: fromLp ? amount : 0 });
+        map.set(mint, { mint, symbol, name, uiAmount: amount, decimals, lpAmount: fromLp ? amount : 0, stakedAmount: fromStaking ? amount : 0 });
       }
     };
 
     for (const w of okWallets) {
       for (const t of w.tokens) {
         if (t.stakingDetails) {
-          const key = `__STAKED_${t.stakingDetails.stakedSymbol}__`;
-          const sym = t.stakingDetails.stakedSymbol;
-          const dec = sym === "D2X" ? 3 : sym === "SCP" ? 9 : 6;
-          add(key, sym, `${sym} staked (ScPrime)`, t.stakingDetails.stakedAmount, dec, false);
+          const sd = t.stakingDetails;
+          add(sd.stakedMint, sd.stakedSymbol, sd.stakedSymbol, sd.stakedAmount, sd.stakedDecimals, false, true);
         } else if (t.whirlpoolDetails) {
           const wd = t.whirlpoolDetails;
           add(wd.tokenAMint, wd.tokenASymbol, wd.tokenAName, wd.tokenAAmount, wd.tokenADecimals, true);
@@ -129,15 +128,6 @@ export default function Home() {
       return b.uiAmount - a.uiAmount;
     });
   })();
-
-  const d2xLiquid = totalTokens.find((t) => t.symbol === "D2X" && !t.mint.startsWith("__"));
-  const d2xStaked = totalTokens.find((t) => t.mint === "__STAKED_D2X__");
-  const d2xTotal = (d2xLiquid?.uiAmount ?? 0) + (d2xStaked?.uiAmount ?? 0);
-  const d2xLiquidSources = [
-    (d2xLiquid?.uiAmount ?? 0) - (d2xLiquid?.lpAmount ?? 0) > 0 && "líquido",
-    (d2xLiquid?.lpAmount ?? 0) > 0 && "LP",
-    d2xStaked && "staked",
-  ].filter(Boolean).join(" + ");
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
@@ -173,6 +163,11 @@ export default function Home() {
                               {token.lpAmount.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals })} en LP
                             </div>
                           )}
+                          {token.stakedAmount > 0 && (
+                            <div className="text-xs text-violet-400/80 mt-0.5">
+                              {token.stakedAmount.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals })} en staking
+                            </div>
+                          )}
                         </div>
                         <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
                           {token.uiAmount.toLocaleString("es-ES", {
@@ -181,17 +176,6 @@ export default function Home() {
                         </span>
                       </div>
                     ))}
-                  </div>
-                )}
-                {d2xLiquid && d2xStaked && (
-                  <div className="flex items-center justify-between px-6 py-2 border-t border-violet-700/50 bg-zinc-700/20">
-                    <div className="min-w-0">
-                      <span className="text-sm font-medium text-violet-300">D2X</span>
-                      <span className="text-xs text-zinc-500 ml-2">{d2xLiquidSources}</span>
-                    </div>
-                    <span className="text-sm text-violet-300 font-mono ml-4 shrink-0">
-                      {d2xTotal.toLocaleString("es-ES", { maximumFractionDigits: 3 })}
-                    </span>
                   </div>
                 )}
               </div>

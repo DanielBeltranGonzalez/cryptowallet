@@ -22,9 +22,11 @@ export type TokenBalance = {
   uiAmount: number;
   decimals: number;
   stakingDetails?: {
-    stakedAmount: number;  // UI amount of the underlying staked token
-    stakedSymbol: string;  // "D2X" or "SCP"
-    unlockAt?: number;     // Unix timestamp (seconds)
+    stakedAmount: number;   // UI amount of the underlying staked token
+    stakedSymbol: string;   // "D2X" or "SCP"
+    stakedMint: string;     // mint address of the underlying staked token
+    stakedDecimals: number; // decimals of the underlying staked token
+    unlockAt?: number;      // Unix timestamp (seconds)
   };
   whirlpoolDetails?: WhirlpoolDetails;
 };
@@ -396,10 +398,10 @@ async function fetchWhirlpoolPositions(
 // ── ScPrime staking position lookup (D2XS and SCPS) ─────────────────────────
 const SCPRIME_STAKING_PROGRAM = "iA2NuwXky5631nDQ2XkhPXauHvcHpi1gtqhwYUxkioZ";
 
-// NFT symbol → { underlying token symbol, raw decimals, position account size in bytes }
-const SCPRIME_STAKING_POSITIONS: Record<string, { symbol: string; decimals: number; positionSize: number }> = {
-  D2XS: { symbol: "D2X", decimals: 3,  positionSize: 98 },
-  SCPS: { symbol: "SCP", decimals: 9,  positionSize: 74 },
+// NFT symbol → { underlying token symbol, mint, raw decimals, position account size in bytes }
+const SCPRIME_STAKING_POSITIONS: Record<string, { symbol: string; mint: string; decimals: number; positionSize: number }> = {
+  D2XS: { symbol: "D2X", mint: "GyuP7chtXSRB6erApifBxFvuTtz94x3zQo3JdWofBTgy", decimals: 3,  positionSize: 98 },
+  SCPS: { symbol: "SCP", mint: "5sMyPtYRcrEVt27DW3xhGVVha3zCXLv4caVt88PXjBgV", decimals: 9,  positionSize: 74 },
 };
 
 async function fetchScPrimeStaking(
@@ -570,7 +572,7 @@ export async function POST(req: NextRequest) {
         : new Map<string, { symbol: string; name: string }>();
 
       // Fetch ScPrime staking details for D2XS and SCPS position NFTs
-      const stakingDetailsMap = new Map<string, { stakedAmount: number; stakedSymbol: string; unlockAt?: number }>();
+      const stakingDetailsMap = new Map<string, { stakedAmount: number; stakedSymbol: string; stakedMint: string; stakedDecimals: number; unlockAt?: number }>();
       const stakingNfts = decoded.filter((t) => {
         const meta = tokenList.get(t.mint) ?? onChainMeta.get(t.mint);
         return meta?.symbol !== undefined && meta.symbol in SCPRIME_STAKING_POSITIONS;
@@ -580,7 +582,7 @@ export async function POST(req: NextRequest) {
         const posConfig = SCPRIME_STAKING_POSITIONS[meta!.symbol];
         await sleep(300);
         const details = await fetchScPrimeStaking(t.mint, posConfig.positionSize, posConfig.decimals, connection);
-        if (details) stakingDetailsMap.set(t.mint, { ...details, stakedSymbol: posConfig.symbol });
+        if (details) stakingDetailsMap.set(t.mint, { ...details, stakedSymbol: posConfig.symbol, stakedMint: posConfig.mint, stakedDecimals: posConfig.decimals });
       }
 
       await sleep(200);
