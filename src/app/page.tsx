@@ -251,7 +251,9 @@ export default function Home() {
                                 <div className="flex items-center justify-between mb-1">
                                   <div>
                                     <span className="text-sm font-medium text-blue-400">Orca Position</span>
-                                    <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
+                                    {token.name !== "Token desconocido" && (
+                                      <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
+                                    )}
                                   </div>
                                 </div>
                                 <div className="space-y-0.5 pl-2 border-l border-zinc-700">
