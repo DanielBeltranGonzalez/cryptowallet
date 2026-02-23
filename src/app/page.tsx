@@ -125,7 +125,7 @@ export default function Home() {
       const aUnknown = a.name === "Token desconocido" ? 1 : 0;
       const bUnknown = b.name === "Token desconocido" ? 1 : 0;
       if (aUnknown !== bUnknown) return aUnknown - bUnknown;
-      return b.uiAmount - a.uiAmount;
+      return a.symbol.localeCompare(b.symbol);
     });
   })();
 
@@ -245,7 +245,7 @@ export default function Home() {
                       {/* Lista de tokens */}
                       {wallet?.status === "ok" && wallet.tokens.length > 0 && (
                         <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
-                          {[...wallet.tokens].sort((a, b) => a.name.localeCompare(b.name)).map((token) =>
+                          {[...wallet.tokens].sort((a, b) => a.symbol.localeCompare(b.symbol)).map((token) =>
                             token.whirlpoolDetails ? (
                               <div key={token.mint} className="flex flex-col px-4 py-2">
                                 <div className="flex items-center justify-between mb-1">
