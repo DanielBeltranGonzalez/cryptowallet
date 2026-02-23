@@ -436,6 +436,10 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
+                {priceData?.eurRate != null && (
+                  <div className="px-6 py-2 text-right border-t border-zinc-700/50">
+                    <span className="text-xs text-zinc-600">1 USD = €{priceData.eurRate.toFixed(4)}</span>
+                  </div>
                 )}
               </div>
             )}
