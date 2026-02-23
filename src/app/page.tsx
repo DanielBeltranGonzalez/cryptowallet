@@ -357,16 +357,23 @@ export default function Home() {
                         <div className="min-w-0">
                           <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
                           <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
-                          {token.lpAmount > 0 && (
-                            <div className="text-xs text-blue-400/80 mt-0.5">
-                              {token.lpAmount.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals })} en LP
-                            </div>
-                          )}
-                          {token.stakedAmount > 0 && (
-                            <div className="text-xs text-violet-400/80 mt-0.5">
-                              {token.stakedAmount.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals })} en staking
-                            </div>
-                          )}
+                          {(token.lpAmount > 0 || token.stakedAmount > 0) && (() => {
+                            const liquid = token.uiAmount - token.lpAmount - token.stakedAmount;
+                            const fmt = (n: number) => n.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals });
+                            return (
+                              <>
+                                {liquid > 0 && (
+                                  <div className="text-xs text-green-400/80 mt-0.5">{fmt(liquid)} líquido</div>
+                                )}
+                                {token.lpAmount > 0 && (
+                                  <div className="text-xs text-blue-400/80 mt-0.5">{fmt(token.lpAmount)} en LP</div>
+                                )}
+                                {token.stakedAmount > 0 && (
+                                  <div className="text-xs text-violet-400/80 mt-0.5">{fmt(token.stakedAmount)} en staking</div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                         <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
                           {token.uiAmount.toLocaleString("es-ES", {
