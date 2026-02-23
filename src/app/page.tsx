@@ -133,7 +133,7 @@ export default function Home() {
     <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6">
       <div className="w-full max-w-6xl mx-auto space-y-6">
         {/* Two-column layout */}
-        <div className="inline-flex flex-col gap-6 w-fit mx-auto">
+        <div className="flex flex-col gap-6 w-fit mx-auto">
           {/* Header */}
           <h1 className="text-3xl font-bold text-white text-center">
             Solana Wallets Balance Viewer
