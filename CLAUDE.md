@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 🚨 **Ejecuta `npm test` antes de cada commit** - Sin excepciones.
 🚨 **TODOS LOS TESTS DEBEN PASAR** - No marques tareas como completas si fallan.
+🚨 **Bump de versión en cada commit** - Incluye siempre el cambio de versión en `package.json` en el mismo commit que el cambio. Usa **SemVer**: PATCH para fixes/estilos, MINOR para features, MAJOR para cambios que rompen compatibilidad.
 
 ## Commands
 
