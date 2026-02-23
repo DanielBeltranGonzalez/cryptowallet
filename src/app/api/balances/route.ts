@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
 import { AccountLayout, MintLayout, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 
+export type WhirlpoolDetails = {
+  tokenAMint: string;
+  tokenASymbol: string;
+  tokenAName: string;
+  tokenAAmount: number;
+  tokenBMint: string;
+  tokenBSymbol: string;
+  tokenBName: string;
+  tokenBAmount: number;
+};
+
 export type TokenBalance = {
   mint: string;
   symbol: string;
@@ -13,6 +24,7 @@ export type TokenBalance = {
     stakedSymbol: string;  // "D2X" or "SCP"
     unlockAt?: number;     // Unix timestamp (seconds)
   };
+  whirlpoolDetails?: WhirlpoolDetails;
 };
 
 export type WalletData =
@@ -187,6 +199,194 @@ async function withBackoff<T>(fn: () => Promise<T>, attempts = 4): Promise<T> {
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// ── Orca Whirlpool position lookup ───────────────────────────────────────────
+const WHIRLPOOL_PROGRAM_ID = "whirLbMiicVdio4qvUfM5KAg6Ct8VwpYzGff3uctyCc";
+const WHIRLPOOL_POSITION_DISCRIMINATOR = Buffer.from([0xaa, 0xbc, 0x8f, 0xe4, 0x7a, 0x40, 0xf7, 0xd0]);
+
+function readU128LE(buf: Buffer, offset: number): bigint {
+  return (buf.readBigUInt64LE(offset + 8) << BigInt(64)) | buf.readBigUInt64LE(offset);
+}
+
+function tickIndexToSqrtPriceX64(tick: number): bigint {
+  const sqrtPrice = Math.pow(1.0001, tick / 2);
+  const TWO64 = BigInt(2) ** BigInt(64);
+  const intPart = Math.floor(sqrtPrice);
+  return BigInt(intPart) * TWO64 + BigInt(Math.floor((sqrtPrice - intPart) * Number(TWO64)));
+}
+
+function calcWhirlpoolAmounts(
+  liquidity: bigint,
+  sqrtCurrent: bigint,
+  tickCurrent: number,
+  tickLower: number,
+  tickUpper: number
+): { amountA: bigint; amountB: bigint } {
+  const sqrtLower = tickIndexToSqrtPriceX64(tickLower);
+  const sqrtUpper = tickIndexToSqrtPriceX64(tickUpper);
+  const TWO64 = BigInt(2) ** BigInt(64);
+
+  if (tickCurrent < tickLower) {
+    const amountA = liquidity * (sqrtUpper - sqrtLower) * TWO64 / (sqrtLower * sqrtUpper);
+    return { amountA, amountB: BigInt(0) };
+  } else if (tickCurrent >= tickUpper) {
+    const amountB = liquidity * (sqrtUpper - sqrtLower) / TWO64;
+    return { amountA: BigInt(0), amountB };
+  } else {
+    const amountA = liquidity * (sqrtUpper - sqrtCurrent) * TWO64 / (sqrtCurrent * sqrtUpper);
+    const amountB = liquidity * (sqrtCurrent - sqrtLower) / TWO64;
+    return { amountA, amountB };
+  }
+}
+
+async function fetchWhirlpoolPositions(
+  connection: Connection,
+  decoded: { mint: string; amount: bigint }[],
+  mintDecimalsMap: Map<string, number>,
+  tokenListMap: Map<string, { symbol: string; name: string }>,
+  localOnChainMeta: Map<string, { symbol: string; name: string }>
+): Promise<Map<string, WhirlpoolDetails>> {
+  const result = new Map<string, WhirlpoolDetails>();
+  try {
+    // Step 1: filter NFT-like candidates (decimals=0, amount >= 1)
+    const candidates = decoded.filter((t) => {
+      const decimals = mintDecimalsMap.get(t.mint) ?? 0;
+      return decimals === 0 && Number(t.amount) >= 1;
+    });
+    if (candidates.length === 0) return result;
+
+    // Step 2: derive Whirlpool position PDAs
+    const whirlpoolProgramKey = new PublicKey(WHIRLPOOL_PROGRAM_ID);
+    const candidatesWithPda = candidates.map((t) => {
+      const mintBuf = new PublicKey(t.mint).toBytes();
+      const [pda] = PublicKey.findProgramAddressSync(
+        [Buffer.from("position"), mintBuf],
+        whirlpoolProgramKey
+      );
+      return { mint: t.mint, pda };
+    });
+
+    // Step 3: batch fetch PDAs
+    const pdaAccounts = await withBackoff(() =>
+      connection.getMultipleAccountsInfo(candidatesWithPda.map((c) => c.pda))
+    );
+
+    // Step 4: filter valid position accounts and parse
+    const positions: {
+      mint: string;
+      whirlpool: string;
+      liquidity: bigint;
+      tickLower: number;
+      tickUpper: number;
+    }[] = [];
+
+    candidatesWithPda.forEach((candidate, i) => {
+      const acct = pdaAccounts[i];
+      if (!acct) return;
+      if (acct.owner.toBase58() !== WHIRLPOOL_PROGRAM_ID) return;
+      if (acct.data.length < 96) return;
+      const data = Buffer.from(acct.data as Uint8Array);
+      if (!WHIRLPOOL_POSITION_DISCRIMINATOR.equals(data.slice(0, 8))) return;
+
+      const whirlpool = new PublicKey(data.slice(8, 40)).toBase58();
+      const liquidity = readU128LE(data, 72);
+      const tickLower = data.readInt32LE(88);
+      const tickUpper = data.readInt32LE(92);
+      positions.push({ mint: candidate.mint, whirlpool, liquidity, tickLower, tickUpper });
+    });
+
+    if (positions.length === 0) return result;
+
+    // Step 5-6: batch fetch whirlpool accounts
+    const uniqueWhirlpools = [...new Set(positions.map((p) => p.whirlpool))];
+    const whirlpoolAccounts = await withBackoff(() =>
+      connection.getMultipleAccountsInfo(uniqueWhirlpools.map((w) => new PublicKey(w)))
+    );
+
+    const whirlpoolDataMap = new Map<string, {
+      sqrtPrice: bigint;
+      tickCurrent: number;
+      mintA: string;
+      mintB: string;
+    }>();
+
+    uniqueWhirlpools.forEach((addr, i) => {
+      const acct = whirlpoolAccounts[i];
+      if (!acct || acct.data.length < 213) return;
+      const data = Buffer.from(acct.data as Uint8Array);
+      const sqrtPrice = readU128LE(data, 65);
+      const tickCurrent = data.readInt32LE(81);
+      const mintA = new PublicKey(data.slice(101, 133)).toBase58();
+      const mintB = new PublicKey(data.slice(181, 213)).toBase58();
+      whirlpoolDataMap.set(addr, { sqrtPrice, tickCurrent, mintA, mintB });
+    });
+
+    // Step 7-8: fetch decimals for mints not already in mintDecimalsMap
+    const allPoolMints = [...new Set(
+      [...whirlpoolDataMap.values()].flatMap((w) => [w.mintA, w.mintB])
+    )].filter((m) => !mintDecimalsMap.has(m));
+
+    const extraDecimalsMap = new Map<string, number>();
+    if (allPoolMints.length > 0) {
+      try {
+        const mintInfos = await withBackoff(() =>
+          connection.getMultipleAccountsInfo(allPoolMints.map((m) => new PublicKey(m)))
+        );
+        allPoolMints.forEach((mint, i) => {
+          const data = mintInfos[i]?.data;
+          if (data) {
+            try { extraDecimalsMap.set(mint, MintLayout.decode(Buffer.from(data)).decimals); }
+            catch { /* skip */ }
+          }
+        });
+      } catch { /* skip */ }
+    }
+
+    // Step 9: resolve metadata for pool mints
+    const allPoolMintsAll = [...new Set(
+      [...whirlpoolDataMap.values()].flatMap((w) => [w.mintA, w.mintB])
+    )];
+    const unknownPoolMints = allPoolMintsAll.filter(
+      (m) => !tokenListMap.has(m) && !localOnChainMeta.has(m)
+    );
+    const extraMeta = unknownPoolMints.length > 0
+      ? await fetchOnChainMeta(unknownPoolMints, connection)
+      : new Map<string, { symbol: string; name: string }>();
+
+    const resolveMeta = (mint: string): { symbol: string; name: string } =>
+      tokenListMap.get(mint) ??
+      localOnChainMeta.get(mint) ??
+      extraMeta.get(mint) ??
+      { symbol: mint.slice(0, 4) + "…", name: "Token desconocido" };
+
+    // Step 10: calculate amounts and build result
+    for (const pos of positions) {
+      const whirlpoolData = whirlpoolDataMap.get(pos.whirlpool);
+      if (!whirlpoolData) continue;
+      const { sqrtPrice, tickCurrent, mintA, mintB } = whirlpoolData;
+      const decimalsA = mintDecimalsMap.get(mintA) ?? extraDecimalsMap.get(mintA) ?? 0;
+      const decimalsB = mintDecimalsMap.get(mintB) ?? extraDecimalsMap.get(mintB) ?? 0;
+
+      const { amountA, amountB } = calcWhirlpoolAmounts(
+        pos.liquidity, sqrtPrice, tickCurrent, pos.tickLower, pos.tickUpper
+      );
+      const metaA = resolveMeta(mintA);
+      const metaB = resolveMeta(mintB);
+
+      result.set(pos.mint, {
+        tokenAMint: mintA,
+        tokenASymbol: metaA.symbol,
+        tokenAName: metaA.name,
+        tokenAAmount: Number(amountA) / Math.pow(10, decimalsA),
+        tokenBMint: mintB,
+        tokenBSymbol: metaB.symbol,
+        tokenBName: metaB.name,
+        tokenBAmount: Number(amountB) / Math.pow(10, decimalsB),
+      });
+    }
+  } catch { /* return partial result on any error */ }
+  return result;
 }
 
 // ── ScPrime staking position lookup (D2XS and SCPS) ─────────────────────────
@@ -379,6 +579,11 @@ export async function POST(req: NextRequest) {
         if (details) stakingDetailsMap.set(t.mint, { ...details, stakedSymbol: posConfig.symbol });
       }
 
+      await sleep(200);
+      const whirlpoolPositions = await fetchWhirlpoolPositions(
+        connection, decoded, mintDecimalsMap, tokenList, onChainMeta
+      );
+
       tokens = decoded
         .map((t) => {
           const decimals = mintDecimalsMap.get(t.mint) ?? 0;
@@ -392,7 +597,10 @@ export async function POST(req: NextRequest) {
             decimals,
           };
           const stakingDetails = stakingDetailsMap.get(t.mint);
-          return stakingDetails ? { ...base, stakingDetails } : base;
+          const whirlpoolDetails = whirlpoolPositions.get(t.mint);
+          if (stakingDetails) return { ...base, stakingDetails };
+          if (whirlpoolDetails) return { ...base, whirlpoolDetails };
+          return base;
         })
         .filter((t) => t.uiAmount > 0)
         .sort((a, b) => {

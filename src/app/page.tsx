@@ -107,6 +107,8 @@ export default function Home() {
             const dec = sym === "D2X" ? 3 : sym === "SCP" ? 9 : 6;
             map.set(key, { mint: key, symbol: sym, name: `${sym} staked (ScPrime)`, uiAmount: t.stakingDetails.stakedAmount, decimals: dec });
           }
+        } else if (t.whirlpoolDetails) {
+          // Skip Whirlpool position NFTs from totals (underlying amounts not aggregated)
         } else {
           const existing = map.get(t.mint);
           if (existing) {
@@ -300,34 +302,58 @@ export default function Home() {
                       {/* Lista de tokens */}
                       {wallet?.status === "ok" && wallet.tokens.length > 0 && (
                         <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
-                          {[...wallet.tokens].sort((a, b) => a.name.localeCompare(b.name)).map((token) => (
-                            <div
-                              key={token.mint}
-                              className="flex items-center justify-between px-4 py-2"
-                            >
-                              <div className="min-w-0">
-                                <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
-                                <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
-                                {token.stakingDetails && (
-                                  <div className="flex items-center gap-2 mt-0.5">
-                                    <span className="text-xs text-violet-400">
-                                      {token.stakingDetails.stakedAmount.toLocaleString("es-ES", { maximumFractionDigits: 6 })} {token.stakingDetails.stakedSymbol} staked
-                                    </span>
-                                    {token.stakingDetails.unlockAt && (
-                                      <span className="text-xs text-zinc-500">
-                                        · unlock {new Date(token.stakingDetails.unlockAt * 1000).toLocaleDateString("es-ES")}
-                                      </span>
-                                    )}
+                          {[...wallet.tokens].sort((a, b) => a.name.localeCompare(b.name)).map((token) =>
+                            token.whirlpoolDetails ? (
+                              <div key={token.mint} className="flex flex-col px-4 py-2">
+                                <div className="flex items-center justify-between mb-1">
+                                  <div>
+                                    <span className="text-sm font-medium text-blue-400">Orca Position</span>
+                                    <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
                                   </div>
-                                )}
+                                </div>
+                                <div className="space-y-0.5 pl-2 border-l border-zinc-700">
+                                  {[
+                                    { symbol: token.whirlpoolDetails.tokenASymbol, amount: token.whirlpoolDetails.tokenAAmount },
+                                    { symbol: token.whirlpoolDetails.tokenBSymbol, amount: token.whirlpoolDetails.tokenBAmount },
+                                  ].map((t) => (
+                                    <div key={t.symbol} className="flex items-center justify-between">
+                                      <span className="text-xs text-zinc-400">{t.symbol.slice(0, 20)}</span>
+                                      <span className="text-xs text-zinc-300 font-mono">
+                                        {t.amount.toLocaleString("es-ES", { maximumFractionDigits: 6 })}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
                               </div>
-                              <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
-                                {token.uiAmount.toLocaleString("es-ES", {
-                                  maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
-                                })}
-                              </span>
-                            </div>
-                          ))}
+                            ) : (
+                              <div
+                                key={token.mint}
+                                className="flex items-center justify-between px-4 py-2"
+                              >
+                                <div className="min-w-0">
+                                  <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
+                                  <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
+                                  {token.stakingDetails && (
+                                    <div className="flex items-center gap-2 mt-0.5">
+                                      <span className="text-xs text-violet-400">
+                                        {token.stakingDetails.stakedAmount.toLocaleString("es-ES", { maximumFractionDigits: 6 })} {token.stakingDetails.stakedSymbol} staked
+                                      </span>
+                                      {token.stakingDetails.unlockAt && (
+                                        <span className="text-xs text-zinc-500">
+                                          · unlock {new Date(token.stakingDetails.unlockAt * 1000).toLocaleDateString("es-ES")}
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
+                                  {token.uiAmount.toLocaleString("es-ES", {
+                                    maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
+                                  })}
+                                </span>
+                              </div>
+                            )
+                          )}
                         </div>
                       )}
                     </div>
