@@ -4,6 +4,19 @@ import { useState, useEffect } from "react";
 import type { WalletData } from "./api/balances/route";
 
 const STORAGE_KEY = "solana-addresses";
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+
+type PriceData = { prices: Record<string, number | null>; eurRate: number | null };
+
+function formatPriceLine(amount: number, priceUsd: number | null | undefined, eurRate: number | null): string | null {
+  if (priceUsd == null) return null;
+  const usdValue = amount * priceUsd;
+  const usdStr = "$" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  if (eurRate == null) return usdStr;
+  const eurValue = usdValue * eurRate;
+  const eurStr = "€" + eurValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${usdStr} | ${eurStr}`;
+}
 
 export default function Home() {
   const [input, setInput] = useState("");
@@ -13,6 +26,7 @@ export default function Home() {
   const [retrying, setRetrying] = useState<Record<string, boolean>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [showInput, setShowInput] = useState(false);
+  const [priceData, setPriceData] = useState<PriceData | null>(null);
 
   // Load persisted addresses after hydration (avoids SSR mismatch)
   useEffect(() => {
@@ -52,6 +66,34 @@ export default function Home() {
     setExpanded((prev) => ({ ...prev, [addr]: !prev[addr] }));
   }
 
+  async function fetchPrices(data: Record<string, WalletData>) {
+    const mints = new Set<string>();
+    mints.add(SOL_MINT);
+    for (const wallet of Object.values(data)) {
+      if (wallet.status !== "ok") continue;
+      for (const token of wallet.tokens) {
+        if (token.stakingDetails) {
+          mints.add(token.stakingDetails.stakedMint);
+        } else if (token.whirlpoolDetails) {
+          mints.add(token.whirlpoolDetails.tokenAMint);
+          mints.add(token.whirlpoolDetails.tokenBMint);
+        } else if (!token.isPositionNft) {
+          mints.add(token.mint);
+        }
+      }
+    }
+    try {
+      const res = await fetch("/api/prices", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mints: [...mints] }),
+      });
+      if (!res.ok) return;
+      const json = await res.json() as PriceData;
+      setPriceData(json);
+    } catch { /* ignore */ }
+  }
+
   async function retryTokens(addr: string) {
     setRetrying((prev) => ({ ...prev, [addr]: true }));
     try {
@@ -81,6 +123,7 @@ export default function Home() {
       });
       const data: Record<string, WalletData> = await res.json();
       setWallets(data);
+      fetchPrices(data); // fire-and-forget
     } finally {
       setLoading(false);
     }
@@ -351,6 +394,10 @@ export default function Home() {
                   <p className="text-2xl font-bold text-violet-400">
                     {totalSol.toFixed(6)} SOL
                   </p>
+                  {(() => {
+                    const priceLine = formatPriceLine(totalSol, priceData?.prices[SOL_MINT], priceData?.eurRate ?? null);
+                    return priceLine ? <p className="text-sm text-amber-400/80 mt-1">{priceLine}</p> : null;
+                  })()}
                 </div>
                 {totalTokens.length > 0 && (
                   <div className="divide-y divide-zinc-700/50">
@@ -375,6 +422,10 @@ export default function Home() {
                                 )}
                               </>
                             );
+                          })()}
+                          {(() => {
+                            const priceLine = formatPriceLine(token.uiAmount, priceData?.prices[token.mint], priceData?.eurRate ?? null);
+                            return priceLine ? <div className="text-xs text-amber-400/80 mt-0.5">{priceLine}</div> : null;
                           })()}
                         </div>
                         <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
