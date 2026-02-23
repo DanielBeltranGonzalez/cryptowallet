@@ -140,62 +140,8 @@ export default function Home() {
           </h1>
 
           <div className="flex gap-6 items-start">
-          {/* Left: Total + Actualizar */}
-          <div className="w-80 shrink-0 space-y-4">
-            {/* Total acumulado */}
-            {okWallets.length > 0 && (
-              <div className="rounded-lg bg-zinc-800 border border-violet-700 overflow-hidden">
-                <div className="px-6 py-4 text-center border-b border-violet-700/50">
-                  <p className="text-sm text-zinc-400 mb-1">Total acumulado</p>
-                  <p className="text-2xl font-bold text-violet-400">
-                    {totalSol.toFixed(6)} SOL
-                  </p>
-                </div>
-                {totalTokens.length > 0 && (
-                  <div className="divide-y divide-zinc-700/50">
-                    {totalTokens.map((token) => (
-                      <div key={token.mint} className="flex items-center justify-between px-6 py-2">
-                        <div className="min-w-0">
-                          <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
-                          <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
-                          {token.lpAmount > 0 && (
-                            <div className="text-xs text-blue-400/80 mt-0.5">
-                              {token.lpAmount.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals })} en LP
-                            </div>
-                          )}
-                          {token.stakedAmount > 0 && (
-                            <div className="text-xs text-violet-400/80 mt-0.5">
-                              {token.stakedAmount.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals })} en staking
-                            </div>
-                          )}
-                        </div>
-                        <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
-                          {token.uiAmount.toLocaleString("es-ES", {
-                            maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
-                          })}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Actualizar */}
-            {addresses.length > 0 && (
-              <button
-                onClick={fetchBalances}
-                disabled={loading}
-                className="w-full rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {loading ? "Consultando…" : "Actualizar saldos"}
-              </button>
-            )}
-
-          </div>
-
-          {/* Right: Direcciones — tarjetas colapsadas + botón añadir */}
-          <div className="flex-1 space-y-2">
+          {/* Left: Direcciones — tarjetas colapsadas + botón añadir */}
+          <div className="min-w-0 shrink space-y-2">
             {[...addresses].sort((a, b) => a.localeCompare(b)).map((addr) => {
               const wallet = wallets[addr];
               const isOpen = expanded[addr] ?? false;
@@ -391,6 +337,59 @@ export default function Home() {
             >
               {showInput ? "Cancelar" : "+ Añadir dirección"}
             </button>
+          </div>
+
+          {/* Right: Total + Actualizar */}
+          <div className="w-80 shrink-0 space-y-4">
+            {/* Total acumulado */}
+            {okWallets.length > 0 && (
+              <div className="rounded-lg bg-zinc-800 border border-violet-700 overflow-hidden">
+                <div className="px-6 py-4 text-center border-b border-violet-700/50">
+                  <p className="text-sm text-zinc-400 mb-1">Total acumulado</p>
+                  <p className="text-2xl font-bold text-violet-400">
+                    {totalSol.toFixed(6)} SOL
+                  </p>
+                </div>
+                {totalTokens.length > 0 && (
+                  <div className="divide-y divide-zinc-700/50">
+                    {totalTokens.map((token) => (
+                      <div key={token.mint} className="flex items-center justify-between px-6 py-2">
+                        <div className="min-w-0">
+                          <span className="text-sm font-medium text-zinc-200">{token.symbol.slice(0, 20)}</span>
+                          <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
+                          {token.lpAmount > 0 && (
+                            <div className="text-xs text-blue-400/80 mt-0.5">
+                              {token.lpAmount.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals })} en LP
+                            </div>
+                          )}
+                          {token.stakedAmount > 0 && (
+                            <div className="text-xs text-violet-400/80 mt-0.5">
+                              {token.stakedAmount.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals })} en staking
+                            </div>
+                          )}
+                        </div>
+                        <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
+                          {token.uiAmount.toLocaleString("es-ES", {
+                            maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
+                          })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Actualizar */}
+            {addresses.length > 0 && (
+              <button
+                onClick={fetchBalances}
+                disabled={loading}
+                className="w-full rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? "Consultando…" : "Actualizar saldos"}
+              </button>
+            )}
           </div>
           </div>
         </div>
