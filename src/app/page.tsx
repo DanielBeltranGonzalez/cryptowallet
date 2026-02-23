@@ -206,12 +206,15 @@ export default function Home() {
                   className="rounded-lg bg-zinc-800 border border-zinc-700 overflow-hidden"
                 >
                   {/* Cabecera clicable para colapsar/expandir */}
-                  <button
-                    onClick={() => toggleExpanded(addr)}
-                    className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-zinc-700/40 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0 mr-3">
-                      <p className="text-xs text-zinc-400 font-mono truncate">{addr}</p>
+                  <div className="w-full flex items-center justify-between px-4 py-3 hover:bg-zinc-700/40 transition-colors">
+                    {/* Dirección como enlace a Solscan */}
+                    <a
+                      href={`https://solscan.io/account/${addr}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 min-w-0 mr-3 group"
+                    >
+                      <p className="text-xs text-zinc-400 font-mono truncate group-hover:text-zinc-200 transition-colors">{addr}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {wallet === undefined && (
                           <span className="text-xs text-zinc-600">Sin consultar</span>
@@ -234,9 +237,17 @@ export default function Home() {
                           </>
                         )}
                       </div>
-                    </div>
-                    <span className="text-zinc-500 text-xs">{isOpen ? "▲" : "▼"}</span>
-                  </button>
+                    </a>
+
+                    {/* Botón de toggle (solo chevron) */}
+                    <button
+                      onClick={() => toggleExpanded(addr)}
+                      className="text-zinc-500 text-xs flex-shrink-0 hover:text-zinc-300 p-1 transition-colors"
+                      aria-label={isOpen ? "Colapsar" : "Expandir"}
+                    >
+                      {isOpen ? "▲" : "▼"}
+                    </button>
+                  </div>
 
                   {/* Contenido expandido */}
                   {isOpen && (
