@@ -1,0 +1,17 @@
+services:
+  cryptowallet:
+    build: .
+    container_name: cryptowallet
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - VIEWS_FILE=/data/views.json
+      # Optionally override the public Solana RPC (recommended for production):
+      # - SOLANA_RPC_URL=https://your-rpc-endpoint
+    volumes:
+      - views_data:/data
+    restart: unless-stopped
+
+volumes:
+  views_data:

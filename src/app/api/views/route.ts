@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
 
-const COUNTER_FILE = path.join(process.cwd(), "views.json");
+const COUNTER_FILE = process.env.VIEWS_FILE ?? path.join(process.cwd(), "views.json");
 
 function readCount(): number {
   try {
