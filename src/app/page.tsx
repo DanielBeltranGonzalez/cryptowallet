@@ -288,7 +288,12 @@ export default function Home() {
                       {/* Lista de tokens */}
                       {wallet?.status === "ok" && wallet.tokens.length > 0 && (
                         <div className="border-t border-zinc-700 divide-y divide-zinc-700/50">
-                          {[...wallet.tokens].sort((a, b) => a.symbol.localeCompare(b.symbol)).map((token) =>
+                          {[...wallet.tokens].sort((a, b) => {
+                            if (a.stakingDetails && b.stakingDetails) {
+                              return (a.stakingDetails.unlockAt ?? 0) - (b.stakingDetails.unlockAt ?? 0);
+                            }
+                            return a.symbol.localeCompare(b.symbol);
+                          }).map((token) =>
                             token.whirlpoolDetails ? (
                               <div key={token.mint} className="flex flex-col px-4 py-2">
                                 <div className="flex items-center justify-between mb-1">
