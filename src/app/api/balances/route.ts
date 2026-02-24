@@ -398,6 +398,11 @@ async function fetchWhirlpoolPositions(
 
 // ── ScPrime staking position lookup (D2XS and SCPS) ─────────────────────────
 const SCPRIME_STAKING_PROGRAM = "iA2NuwXky5631nDQ2XkhPXauHvcHpi1gtqhwYUxkioZ";
+// Known global/contract accounts owned by the staking program that are NOT position accounts
+const SCPRIME_CONTRACT_ACCOUNTS = new Set([
+  "8gDV4sKmibum8XnqzXcpNyEKKGQiUtdog3DTbDcJsA9W", // D2X staking contract
+  "7ecsHhKTPnJa6959GdzfVEyL6knGKD58HC6ohK9SaJ1K", // SCP staking contract
+]);
 
 // NFT symbol → { underlying token symbol, mint, raw decimals, position account size in bytes }
 const SCPRIME_STAKING_POSITIONS: Record<string, { symbol: string; mint: string; decimals: number; positionSize: number }> = {
@@ -414,12 +419,13 @@ async function fetchScPrimeStaking(
   // stakedSymbol is resolved by the caller; we only need decimals and positionSize here
   try {
     const sigs = await withBackoff(() =>
-      connection.getSignaturesForAddress(new PublicKey(nftMintStr), { limit: 10 })
+      connection.getSignaturesForAddress(new PublicKey(nftMintStr), { limit: 50 })
     );
     if (sigs.length === 0) return null;
 
     // The creation tx is the oldest — last in the desc-ordered list
     for (const sig of [...sigs].reverse()) {
+      await sleep(400);
       const tx = await withBackoff(() =>
         connection.getParsedTransaction(sig.signature, { maxSupportedTransactionVersion: 0 })
       );
@@ -433,25 +439,49 @@ async function fetchScPrimeStaking(
 
       if (!accountKeys.includes(SCPRIME_STAKING_PROGRAM)) continue;
 
+      await sleep(400);
       const accts = await withBackoff(() =>
         connection.getMultipleAccountsInfo(accountKeys.map((a) => new PublicKey(a)))
       );
 
-      for (const acct of accts) {
+      // First pass: exact size match (expected protocol version)
+      for (let i = 0; i < accts.length; i++) {
+        const acct = accts[i];
         if (
           acct &&
           acct.owner.toBase58() === SCPRIME_STAKING_PROGRAM &&
-          acct.data.length === positionSize
+          acct.data.length === positionSize &&
+          !SCPRIME_CONTRACT_ACCOUNTS.has(accountKeys[i])
         ) {
           const data = Buffer.from(acct.data as Uint8Array);
           const rawAmount = data.readBigUInt64LE(0);
-          const stakedAmount = Number(rawAmount) / Math.pow(10, decimals);
           const unlockTimestamp = data.readUInt32LE(10);
-          const unlockAt =
-            unlockTimestamp > 1_700_000_000 && unlockTimestamp < 2_500_000_000
-              ? unlockTimestamp
-              : undefined;
+          const hasValidTimestamp = unlockTimestamp > 1_700_000_000 && unlockTimestamp < 2_500_000_000;
+          // Skip accounts with no staked amount and no valid timestamp — likely a wrong/stale account
+          if (Number(rawAmount) === 0 && !hasValidTimestamp) continue;
+          const stakedAmount = Number(rawAmount) / Math.pow(10, decimals);
+          const unlockAt = hasValidTimestamp ? unlockTimestamp : undefined;
           return { stakedAmount, stakedSymbol: "", unlockAt }; // symbol filled by caller
+        }
+      }
+
+      // Fallback: any size >= 14 owned by staking program with a valid unlock timestamp
+      // Handles protocol updates that changed the position account size
+      for (let i = 0; i < accts.length; i++) {
+        const acct = accts[i];
+        if (
+          acct &&
+          acct.owner.toBase58() === SCPRIME_STAKING_PROGRAM &&
+          acct.data.length >= 14 &&
+          !SCPRIME_CONTRACT_ACCOUNTS.has(accountKeys[i])
+        ) {
+          const data = Buffer.from(acct.data as Uint8Array);
+          const rawAmount = data.readBigUInt64LE(0);
+          const unlockTimestamp = data.readUInt32LE(10);
+          if (Number(rawAmount) > 0 && unlockTimestamp > 1_700_000_000 && unlockTimestamp < 2_500_000_000) {
+            const stakedAmount = Number(rawAmount) / Math.pow(10, decimals);
+            return { stakedAmount, stakedSymbol: "", unlockAt: unlockTimestamp };
+          }
         }
       }
     }
@@ -530,6 +560,7 @@ export async function POST(req: NextRequest) {
     // Fetch token accounts (raw encoding — cheaper RPC call than parsed variant)
     let tokens: TokenBalance[] = [];
     let tokensError: string | undefined;
+    let stakingFetchIncomplete = false;
     try {
       const legacyRaw = await withBackoff(() =>
         connection.getTokenAccountsByOwner(pubkey, { programId: TOKEN_PROGRAM_ID })
@@ -581,9 +612,13 @@ export async function POST(req: NextRequest) {
       for (const t of stakingNfts) {
         const meta = tokenList.get(t.mint) ?? onChainMeta.get(t.mint);
         const posConfig = SCPRIME_STAKING_POSITIONS[meta!.symbol];
-        await sleep(300);
+        await sleep(1000);
         const details = await fetchScPrimeStaking(t.mint, posConfig.positionSize, posConfig.decimals, connection);
-        if (details) stakingDetailsMap.set(t.mint, { ...details, stakedSymbol: posConfig.symbol, stakedMint: posConfig.mint, stakedDecimals: posConfig.decimals });
+        if (details) {
+          stakingDetailsMap.set(t.mint, { ...details, stakedSymbol: posConfig.symbol, stakedMint: posConfig.mint, stakedDecimals: posConfig.decimals });
+        } else {
+          stakingFetchIncomplete = true;
+        }
       }
 
       await sleep(200);
@@ -630,7 +665,7 @@ export async function POST(req: NextRequest) {
       tokens,
       tokensError,
     };
-    results[addr] = tokensError ? walletData : setCached(addr, walletData);
+    results[addr] = (tokensError || stakingFetchIncomplete) ? walletData : setCached(addr, walletData);
 
     if (addresses.indexOf(addr) < addresses.length - 1) await sleep(400);
   }
