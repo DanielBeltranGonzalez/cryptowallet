@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Footer from "@/components/Footer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -26,10 +27,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
         {children}
-        <footer className="fixed bottom-0 left-0 right-0 text-center text-xs text-gray-500 py-2 bg-black/60 backdrop-blur-sm">
-          &copy; <a href="mailto:tacombel@gmail.com" className="hover:text-gray-300">tacombel@gmail.com</a>
-          {" · "}v1.3.3
-        </footer>
+        <Footer version="v1.3.4" />
       </body>
     </html>
   );

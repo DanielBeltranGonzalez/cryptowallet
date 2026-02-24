@@ -24,6 +24,9 @@ package-lock.json
 # local scripts
 lanzar.sh
 
+# view counter (local persistent data)
+views.json
+
 # misc
 .DS_Store
 *.pem
