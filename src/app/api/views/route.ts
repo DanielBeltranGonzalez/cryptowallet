@@ -26,6 +26,6 @@ export async function GET() {
 
 export async function POST() {
   const count = readCount() + 1;
-  writeCount(count);
+  try { writeCount(count); } catch { /* /data not writable yet */ }
   return NextResponse.json({ count });
 }
