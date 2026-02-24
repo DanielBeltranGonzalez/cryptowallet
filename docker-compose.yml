@@ -3,7 +3,7 @@ services:
     build: .
     container_name: cryptowallet
     ports:
-      - "3000:3000"
+      - "${HOST_PORT:-3000}:3000"
     environment:
       - NODE_ENV=production
       - VIEWS_FILE=/data/views.json
