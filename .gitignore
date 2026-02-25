@@ -24,6 +24,9 @@ package-lock.json
 # local scripts
 lanzar.sh
 
+# local notes
+TODO.md
+
 # view counter (local persistent data)
 views.json
 
