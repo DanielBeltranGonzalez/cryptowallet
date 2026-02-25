@@ -2,12 +2,18 @@
 
 import { useState, useEffect } from "react";
 import { useLang } from "@/contexts/LanguageContext";
+import type { Language } from "@/lib/translations";
+
+const LANGUAGES: { code: Language; flag: string; label: string }[] = [
+  { code: "es", flag: "🇪🇸", label: "Español" },
+  { code: "en", flag: "🇬🇧", label: "English" },
+];
 
 const CONSENT_KEY = "legal-consent";
 
 export default function ConsentModal() {
   const [visible, setVisible] = useState(false);
-  const { t } = useLang();
+  const { lang, setLang, t } = useLang();
 
   useEffect(() => {
     if (!sessionStorage.getItem(CONSENT_KEY)) {
@@ -25,7 +31,25 @@ export default function ConsentModal() {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="bg-zinc-900 border border-zinc-700 rounded-xl max-w-lg w-full p-6 space-y-4 max-h-[90vh] overflow-y-auto">
-        <h2 className="text-lg font-bold text-white">{t.legalTitle}</h2>
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold text-white">{t.legalTitle}</h2>
+          <div className="flex gap-1">
+            {LANGUAGES.map(({ code, flag, label }) => (
+              <button
+                key={code}
+                onClick={() => setLang(code)}
+                title={label}
+                aria-label={label}
+                aria-pressed={lang === code}
+                className={`text-xl leading-none transition-opacity ${
+                  lang === code ? "opacity-100" : "opacity-30 hover:opacity-70"
+                }`}
+              >
+                {flag}
+              </button>
+            ))}
+          </div>
+        </div>
 
         <div className="space-y-3 text-sm text-zinc-300">
           <section>
