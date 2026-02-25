@@ -27,11 +27,11 @@ Cuando el usuario diga **"prepara para portainer"**, genera o actualiza los dos 
 
 ```yaml
 healthcheck:
-  test: ["CMD", "wget", "-qO-", "http://localhost:PORT/"]
+  test: ["CMD", "wget", "-q", "--spider", "http://localhost:PORT/"]
   interval: 30s
   timeout: 10s
   retries: 3
-  start_period: 20s
+  start_period: 30s
 ```
 
 ## Commands

@@ -13,11 +13,11 @@ services:
       - views_data:/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:3000/"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 20s
+      start_period: 30s
 
 volumes:
   views_data:
