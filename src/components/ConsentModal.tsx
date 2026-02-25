@@ -10,13 +10,13 @@ export default function ConsentModal() {
   const { t } = useLang();
 
   useEffect(() => {
-    if (!localStorage.getItem(CONSENT_KEY)) {
+    if (!sessionStorage.getItem(CONSENT_KEY)) {
       setVisible(true);
     }
   }, []);
 
   function accept() {
-    localStorage.setItem(CONSENT_KEY, "1");
+    sessionStorage.setItem(CONSENT_KEY, "1");
     setVisible(false);
   }
 
