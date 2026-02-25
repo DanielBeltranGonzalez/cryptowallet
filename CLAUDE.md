@@ -6,6 +6,19 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 🚨 **TODOS LOS TESTS DEBEN PASAR** - No marques tareas como completas si fallan.
 🚨 **Bump de versión en cada commit** - Incluye siempre el cambio de versión en `package.json` en el mismo commit que el cambio. Usa **SemVer**: PATCH para fixes/estilos, MINOR para features, MAJOR para cambios que rompen compatibilidad.
 
+## Docker
+
+🚨 **Todo `docker-compose.yml` debe incluir `healthcheck`** en cada servicio. Usa `wget` (disponible en Alpine) en lugar de `curl`. Ejemplo mínimo:
+
+```yaml
+healthcheck:
+  test: ["CMD", "wget", "-qO-", "http://localhost:PORT/"]
+  interval: 30s
+  timeout: 10s
+  retries: 3
+  start_period: 20s
+```
+
 ## Commands
 
 ```bash
