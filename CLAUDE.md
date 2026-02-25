@@ -8,6 +8,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Docker
 
+Cuando el usuario diga **"prepara para portainer"**, genera o actualiza los dos ficheros siguientes adaptados al proyecto:
+
+**`Dockerfile`** — multi-stage (`deps` → `builder` → `runner`) sobre la imagen base adecuada. Usuario no-root. `EXPOSE` del puerto de la app. `CMD` para arrancar el servidor.
+
+**`docker-compose.yml`** — con:
+- `build: .`
+- `container_name`
+- `ports` usando `${HOST_PORT:-XXXX}:XXXX`
+- `environment` con las variables necesarias
+- `volumes` para datos persistentes
+- `restart: unless-stopped`
+- `healthcheck` obligatorio (ver regla abajo)
+
+---
+
 🚨 **Todo `docker-compose.yml` debe incluir `healthcheck`** en cada servicio. Usa `wget` (disponible en Alpine) en lugar de `curl`. Ejemplo mínimo:
 
 ```yaml
