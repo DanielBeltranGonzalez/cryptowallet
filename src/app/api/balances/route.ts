@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Connection, PublicKey, clusterApiUrl } from "@solana/web3.js";
 import { AccountLayout, MintLayout, TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } from "@solana/spl-token";
 
-export type WhirlpoolDetails = {
+type WhirlpoolDetails = {
   tokenAMint: string;
   tokenASymbol: string;
   tokenAName: string;
@@ -15,7 +15,7 @@ export type WhirlpoolDetails = {
   tokenBDecimals: number;
 };
 
-export type TokenBalance = {
+type TokenBalance = {
   mint: string;
   symbol: string;
   name: string;
