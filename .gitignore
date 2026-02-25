@@ -13,9 +13,6 @@
 # production
 /build
 
-# local scripts
-lanzar.sh
-
 # local notes
 TODO.md
 
