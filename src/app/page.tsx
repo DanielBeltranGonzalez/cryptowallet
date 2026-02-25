@@ -2,23 +2,25 @@
 
 import { useState, useEffect } from "react";
 import type { WalletData } from "./api/balances/route";
+import { useLang } from "@/contexts/LanguageContext";
 
 const STORAGE_KEY = "solana-addresses";
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 
 type PriceData = { prices: Record<string, number | null>; eurRate: number | null };
 
-function formatPriceLine(amount: number, priceUsd: number | null | undefined, eurRate: number | null): string | null {
+function formatPriceLine(amount: number, priceUsd: number | null | undefined, eurRate: number | null, locale: string): string | null {
   if (priceUsd == null) return null;
   const usdValue = amount * priceUsd;
-  const usdStr = "$" + usdValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const usdStr = "$" + usdValue.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   if (eurRate == null) return usdStr;
   const eurValue = usdValue * eurRate;
-  const eurStr = "€" + eurValue.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const eurStr = "€" + eurValue.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return `${usdStr} | ${eurStr}`;
 }
 
 export default function Home() {
+  const { t } = useLang();
   const [input, setInput] = useState("");
   const [addresses, setAddresses] = useState<string[]>([]);
   const [wallets, setWallets] = useState<Record<string, WalletData>>({});
@@ -168,7 +170,7 @@ export default function Home() {
       const aUnknown = a.name === "Token desconocido" ? 1 : 0;
       const bUnknown = b.name === "Token desconocido" ? 1 : 0;
       if (aUnknown !== bUnknown) return aUnknown - bUnknown;
-      return a.symbol.localeCompare(b.symbol);
+      return a.symbol.localeCompare(b.symbol, t.numLocale);
     });
   })();
 
@@ -205,19 +207,19 @@ export default function Home() {
                       <p className="text-xs text-zinc-400 font-mono truncate group-hover:text-zinc-200 transition-colors">{addr}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         {wallet === undefined && (
-                          <span className="text-xs text-zinc-600">Sin consultar</span>
+                          <span className="text-xs text-zinc-600">{t.notQueried}</span>
                         )}
                         {wallet?.status === "invalid" && (
-                          <span className="text-xs text-red-400">Dirección inválida</span>
+                          <span className="text-xs text-red-400">{t.invalidAddress}</span>
                         )}
                         {wallet?.status === "error" && (
-                          <span className="text-xs text-yellow-400">Error de red</span>
+                          <span className="text-xs text-yellow-400">{t.networkError}</span>
                         )}
                         {wallet?.status === "ok" && (
                           <>
                             <span className="text-xs text-green-400">{wallet.sol.toFixed(4)} SOL</span>
                             {wallet.tokensError && (
-                              <span className="text-xs text-yellow-400">· Error tokens</span>
+                              <span className="text-xs text-yellow-400">· {t.tokenErrorShort}</span>
                             )}
                             {!wallet.tokensError && wallet.tokens.length > 0 && (
                               <span className="text-xs text-zinc-500">· {wallet.tokens.length} tokens</span>
@@ -231,7 +233,7 @@ export default function Home() {
                     <button
                       onClick={() => toggleExpanded(addr)}
                       className="text-zinc-500 text-xs flex-shrink-0 hover:text-zinc-300 p-1 transition-colors"
-                      aria-label={isOpen ? "Colapsar" : "Expandir"}
+                      aria-label={isOpen ? t.collapse : t.expand}
                     >
                       {isOpen ? "▲" : "▼"}
                     </button>
@@ -246,10 +248,10 @@ export default function Home() {
                           {wallet === undefined ? (
                             <span className="text-zinc-500 text-sm">—</span>
                           ) : wallet.status === "invalid" ? (
-                            <span className="text-red-400 text-sm">Dirección inválida</span>
+                            <span className="text-red-400 text-sm">{t.invalidAddress}</span>
                           ) : wallet.status === "error" ? (
                             <span className="text-yellow-400 text-sm" title={wallet.message}>
-                              Error de red — intenta de nuevo
+                              {t.networkErrorRetry}
                             </span>
                           ) : (
                             <>
@@ -262,7 +264,7 @@ export default function Home() {
                                 </span>
                               )}
                               {wallet.tokens.length === 0 && !wallet.tokensError && (
-                                <span className="text-xs text-zinc-500">Sin tokens</span>
+                                <span className="text-xs text-zinc-500">{t.noTokens}</span>
                               )}
                               {wallet.tokensError && (
                                 <button
@@ -271,7 +273,7 @@ export default function Home() {
                                   className="text-xs text-yellow-400 hover:text-yellow-300 disabled:opacity-50 transition-colors"
                                   title={wallet.tokensError}
                                 >
-                                  {retrying[addr] ? "Reintentando…" : "Error tokens — reintentar"}
+                                  {retrying[addr] ? t.retrying : t.tokenErrorRetry}
                                 </button>
                               )}
                             </>
@@ -281,7 +283,7 @@ export default function Home() {
                           onClick={(e) => { e.stopPropagation(); removeAddress(addr); }}
                           className="text-zinc-500 hover:text-red-400 transition-colors text-sm"
                         >
-                          Eliminar
+                          {t.remove}
                         </button>
                       </div>
 
@@ -308,11 +310,11 @@ export default function Home() {
                                   {[
                                     { symbol: token.whirlpoolDetails.tokenASymbol, amount: token.whirlpoolDetails.tokenAAmount },
                                     { symbol: token.whirlpoolDetails.tokenBSymbol, amount: token.whirlpoolDetails.tokenBAmount },
-                                  ].map((t) => (
-                                    <div key={t.symbol} className="flex items-center justify-between">
-                                      <span className="text-xs text-zinc-400">{t.symbol.slice(0, 20)}</span>
+                                  ].map((tk) => (
+                                    <div key={tk.symbol} className="flex items-center justify-between">
+                                      <span className="text-xs text-zinc-400">{tk.symbol.slice(0, 20)}</span>
                                       <span className="text-xs text-zinc-300 font-mono">
-                                        {t.amount.toLocaleString("es-ES", { maximumFractionDigits: 6 })}
+                                        {tk.amount.toLocaleString(t.numLocale, { maximumFractionDigits: 6 })}
                                       </span>
                                     </div>
                                   ))}
@@ -329,18 +331,18 @@ export default function Home() {
                                   {token.stakingDetails && (
                                     <div className="flex items-center gap-2 mt-0.5">
                                       <span className="text-xs text-violet-400">
-                                        {token.stakingDetails.stakedAmount.toLocaleString("es-ES", { maximumFractionDigits: 6 })} {token.stakingDetails.stakedSymbol} staked
+                                        {token.stakingDetails.stakedAmount.toLocaleString(t.numLocale, { maximumFractionDigits: 6 })} {token.stakingDetails.stakedSymbol} {t.staked}
                                       </span>
                                       {token.stakingDetails.unlockAt && (
                                         <span className="text-xs text-zinc-500">
-                                          · unlock {new Date(token.stakingDetails.unlockAt * 1000).toLocaleDateString("es-ES")}
+                                          · {t.unlock} {new Date(token.stakingDetails.unlockAt * 1000).toLocaleDateString(t.numLocale)}
                                         </span>
                                       )}
                                     </div>
                                   )}
                                 </div>
                                 <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
-                                  {token.uiAmount.toLocaleString("es-ES", {
+                                  {token.uiAmount.toLocaleString(t.numLocale, {
                                     maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
                                   })}
                                 </span>
@@ -366,7 +368,7 @@ export default function Home() {
                     if (e.key === "Enter") addAddress();
                     if (e.key === "Escape") { setShowInput(false); setInput(""); }
                   }}
-                  placeholder="Dirección de Solana..."
+                  placeholder={t.addressPlaceholder}
                   maxLength={100}
                   autoFocus
                   className="flex-1 rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-2 text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-violet-500"
@@ -375,7 +377,7 @@ export default function Home() {
                   onClick={addAddress}
                   className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors"
                 >
-                  Confirmar
+                  {t.confirm}
                 </button>
               </div>
             )}
@@ -385,7 +387,7 @@ export default function Home() {
               onClick={() => { setShowInput((v) => !v); setInput(""); }}
               className="w-full rounded-lg border border-dashed border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-400 hover:border-violet-500 hover:text-violet-400 transition-colors"
             >
-              {showInput ? "Cancelar" : "+ Añadir dirección"}
+              {showInput ? t.cancel : t.addAddress}
             </button>
           </div>
 
@@ -395,12 +397,12 @@ export default function Home() {
             {okWallets.length > 0 && (
               <div className="rounded-lg bg-zinc-800 border border-violet-700 overflow-hidden">
                 <div className="px-6 py-4 text-center border-b border-violet-700/50">
-                  <p className="text-sm text-zinc-400 mb-1">Total acumulado</p>
+                  <p className="text-sm text-zinc-400 mb-1">{t.totalAccumulated}</p>
                   <p className="text-2xl font-bold text-violet-400">
                     {totalSol.toFixed(6)} SOL
                   </p>
                   {(() => {
-                    const priceLine = formatPriceLine(totalSol, priceData?.prices[SOL_MINT], priceData?.eurRate ?? null);
+                    const priceLine = formatPriceLine(totalSol, priceData?.prices[SOL_MINT], priceData?.eurRate ?? null, t.numLocale);
                     return priceLine ? <p className="text-sm text-amber-400/80 mt-1">{priceLine}</p> : null;
                   })()}
                 </div>
@@ -413,28 +415,28 @@ export default function Home() {
                           <span className="text-xs text-zinc-500 ml-2">{token.name.slice(0, 50)}</span>
                           {(token.lpAmount > 0 || token.stakedAmount > 0) && (() => {
                             const liquid = token.uiAmount - token.lpAmount - token.stakedAmount;
-                            const fmt = (n: number) => n.toLocaleString("es-ES", { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals });
+                            const fmt = (n: number) => n.toLocaleString(t.numLocale, { maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals });
                             return (
                               <>
                                 {liquid > 0 && (
-                                  <div className="text-xs text-green-400/80 mt-0.5">{fmt(liquid)} líquido</div>
+                                  <div className="text-xs text-green-400/80 mt-0.5">{fmt(liquid)} {t.liquid}</div>
                                 )}
                                 {token.lpAmount > 0 && (
-                                  <div className="text-xs text-blue-400/80 mt-0.5">{fmt(token.lpAmount)} en LP</div>
+                                  <div className="text-xs text-blue-400/80 mt-0.5">{fmt(token.lpAmount)} {t.inLP}</div>
                                 )}
                                 {token.stakedAmount > 0 && (
-                                  <div className="text-xs text-violet-400/80 mt-0.5">{fmt(token.stakedAmount)} en staking</div>
+                                  <div className="text-xs text-violet-400/80 mt-0.5">{fmt(token.stakedAmount)} {t.inStaking}</div>
                                 )}
                               </>
                             );
                           })()}
                           {(() => {
-                            const priceLine = formatPriceLine(token.uiAmount, priceData?.prices[token.mint], priceData?.eurRate ?? null);
+                            const priceLine = formatPriceLine(token.uiAmount, priceData?.prices[token.mint], priceData?.eurRate ?? null, t.numLocale);
                             return priceLine ? <div className="text-xs text-amber-400/80 mt-0.5">{priceLine}</div> : null;
                           })()}
                         </div>
                         <span className="text-sm text-zinc-300 font-mono ml-4 shrink-0">
-                          {token.uiAmount.toLocaleString("es-ES", {
+                          {token.uiAmount.toLocaleString(t.numLocale, {
                             maximumFractionDigits: token.decimals > 6 ? 6 : token.decimals,
                           })}
                         </span>
@@ -457,7 +459,7 @@ export default function Home() {
                 disabled={loading}
                 className="w-full rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {loading ? "Consultando…" : "Actualizar saldos"}
+                {loading ? t.fetching : t.updateBalances}
               </button>
             )}
           </div>
